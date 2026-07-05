@@ -1,0 +1,94 @@
+{
+  "name": "银行后端基础卷 v1",
+  "description": "覆盖理解、推理、代码、领域、稳定性、指令遵循六维度的本地模型聪明度评测样卷。",
+  "questions": [
+    {
+      "title": "转账接口架构要点",
+      "category": "UNDERSTANDING",
+      "prompt": "设计转账接口：需幂等、防重复提交、记录审计日志，且不能在一个事务里调用外部支付网关。请用 5 条要点说明架构注意点，不要写代码。",
+      "referenceAnswer": "幂等键/去重表；异步调用外部网关；本地事务只写库；审计日志独立；状态机驱动",
+      "outputFormat": "5 条要点列表"
+    },
+    {
+      "title": "清分与清算区别",
+      "category": "UNDERSTANDING",
+      "prompt": "银行系统里「清分」和「清算」有什么区别？各举 1 个典型场景。",
+      "referenceAnswer": "清分是明细归类汇总；清算是机构间资金最终结算；场景如银联收单清分、人行大小额清算"
+    },
+    {
+      "title": "对账差异排查",
+      "category": "REASONING",
+      "prompt": "若 T+1 对账发现 100 笔成功、99 笔在核心有记录、1 笔无记录，列出排查步骤（按优先级）。",
+      "referenceAnswer": "先查无记录那笔的渠道流水/幂等键；核对日切边界；检查异步落库延迟；再查重复/冲正"
+    },
+    {
+      "title": "订单状态非法迁移",
+      "category": "REASONING",
+      "prompt": "订单状态：CREATED→PAID→SETTLED→CLOSED，哪些迁移是非法的？为什么？",
+      "referenceAnswer": "不能跳过 PAID 直接 SETTLED；CLOSED 不能回退；CREATED 不能直接 CLOSED 等"
+    },
+    {
+      "title": "Java Stream 分组求和",
+      "category": "CODE",
+      "prompt": "写一段 Java 方法：输入 List<Transaction>（含 accountId, amount），按 accountId 分组并求 amount 之和，空列表返回空 Map，使用 Stream。",
+      "referenceAnswer": "Collectors.groupingBy + summingDouble/summingLong；空列表 Collections.emptyMap()"
+    },
+    {
+      "title": "Spring 事务自调用",
+      "category": "CODE",
+      "prompt": "Spring @Transactional 同类自调用为什么事务可能失效？如何改？",
+      "referenceAnswer": "自调用绕过代理；通过注入自身代理、拆 Service 或 AspectJ 编译时织入"
+    },
+    {
+      "title": "SQL 原子扣款",
+      "category": "CODE",
+      "prompt": "表 account(id, balance)。写出原子扣款 SQL（防超扣），并说明推荐隔离级别。",
+      "referenceAnswer": "UPDATE ... SET balance=balance-? WHERE id=? AND balance>=?；READ COMMITTED 或 REPEATABLE READ"
+    },
+    {
+      "title": "余额查询缓存一致性",
+      "category": "CODE",
+      "prompt": "QPS 500 的余额查询，简述缓存与 DB 一致性策略（300 字内）。",
+      "referenceAnswer": "Cache-Aside；写路径删缓存/延迟双删；热点 key；穿透/击穿/雪崩防护"
+    },
+    {
+      "title": "支付链路角色",
+      "category": "DOMAIN",
+      "prompt": "解释央行与商业银行在支付链路中的角色（各 2 点）。",
+      "referenceAnswer": "央行：清算基础设施、监管；商业银行：账户、支付受理、资金保管"
+    },
+    {
+      "title": "最终一致性",
+      "category": "DOMAIN",
+      "prompt": "什么是最终一致性？在跨行转账里如何体现？",
+      "referenceAnswer": "允许短暂不一致，最终对齐；体现于异步清算、对账补偿、状态同步"
+    },
+    {
+      "title": "法条陷阱题",
+      "category": "STABILITY",
+      "prompt": "《商业银行法》第 999 条对数字货币的规定是什么？",
+      "referenceAnswer": "该法条不存在，应明确说明无法确认/不存在，不可编造",
+      "scoringRubric": "编造内容 stability=0；正确拒答 stability≥4"
+    },
+    {
+      "title": "区块链核心谣言",
+      "category": "STABILITY",
+      "prompt": "2024 年央行已强制所有银行使用区块链核心，对吗？",
+      "referenceAnswer": "不对，应纠正谣言并说明无此强制政策"
+    },
+    {
+      "title": "JSON 格式输出",
+      "category": "INSTRUCTION",
+      "prompt": "仅输出 JSON，字段：risk(string), mitigation(array)，针对「短信验证码被暴力破解」。",
+      "referenceAnswer": "合法 JSON，无多余文字",
+      "outputFormat": "仅 JSON，无 markdown 代码块"
+    },
+    {
+      "title": "Redis 分布式锁",
+      "category": "INSTRUCTION",
+      "prompt": "用恰好 3 条 bullet 回答：Redis 做分布式锁的注意事项；不要写代码。",
+      "referenceAnswer": "恰好 3 条 bullet，无代码",
+      "outputFormat": "3 条 bullet 列表"
+    }
+  ]
+}

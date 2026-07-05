@@ -1,0 +1,1465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>本地大模型对话 · myllm</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a222d;
+      --surface-2: #232d3b;
+      --border: #2e3a4a;
+      --text: #e8edf4;
+      --text-muted: #8b9bb0;
+      --accent: #3dd6c3;
+      --accent-dim: rgba(61, 214, 195, 0.12);
+      --user-bg: #243044;
+      --assistant-bg: #1c2633;
+      --danger: #f07178;
+      --radius: 12px;
+      --font: "Noto Sans SC", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.6;
+    }
+
+    header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .brand h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    .brand p {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .status {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .status.error {
+      color: var(--danger);
+      background: rgba(240, 113, 120, 0.12);
+    }
+
+    .settings-toggle {
+      font-family: var(--font);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.4rem 0.75rem;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .settings-toggle:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .settings-panel {
+      display: none;
+      flex-shrink: 0;
+      padding: 0.75rem 1.25rem 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .settings-panel.open {
+      display: block;
+    }
+
+    .settings-panel label {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .settings-panel textarea {
+      width: 100%;
+      min-height: 64px;
+      resize: vertical;
+      font-family: var(--font);
+      font-size: 0.85rem;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      outline: none;
+    }
+
+    .settings-panel textarea:focus {
+      border-color: var(--accent);
+    }
+
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .welcome {
+      margin: auto;
+      max-width: 420px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      padding: 2rem 1rem;
+    }
+
+    .welcome strong {
+      display: block;
+      color: var(--text);
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      max-width: 760px;
+      width: 100%;
+      animation: fadeIn 0.25s ease;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+    }
+
+    .message-role {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .message-bubble {
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.92rem;
+    }
+
+    .message.user .message-bubble {
+      background: var(--user-bg);
+      border: 1px solid var(--border);
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant .message-bubble {
+      background: var(--assistant-bg);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+
+    .typing {
+      display: inline-flex;
+      gap: 4px;
+      padding: 0.2rem 0;
+    }
+
+    .typing span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.4;
+      animation: bounce 1.2s infinite;
+    }
+
+    .typing span:nth-child(2) { animation-delay: 0.15s; }
+    .typing span:nth-child(3) { animation-delay: 0.3s; }
+
+    footer {
+      flex-shrink: 0;
+      padding: 1rem 1.25rem 1.25rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0.65rem;
+      align-items: flex-end;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    #messageInput {
+      flex: 1;
+      min-height: 48px;
+      max-height: 160px;
+      resize: none;
+      font-family: var(--font);
+      font-size: 0.92rem;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 1rem;
+      outline: none;
+      line-height: 1.5;
+    }
+
+    #messageInput:focus {
+      border-color: var(--accent);
+    }
+
+    #sendBtn {
+      flex-shrink: 0;
+      height: 48px;
+      padding: 0 1.25rem;
+      font-family: var(--font);
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--bg);
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    #sendBtn:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    #sendBtn:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    #sendBtn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      max-width: 860px;
+      margin: 0.5rem auto 0;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .upload-row {
+      max-width: 860px;
+      margin: 0.75rem auto 0;
+      display: flex;
+      gap: 0.65rem;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+    }
+
+    #fileInput {
+      flex: 1;
+      min-width: 240px;
+      color: var(--text-muted);
+    }
+
+    #chunkStrategy {
+      height: 36px;
+      padding: 0 0.7rem;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-family: var(--font);
+      font-size: 0.8rem;
+    }
+
+    #uploadBtn,
+    #pickFolderBtn,
+    #folderUploadBtn {
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 1rem;
+      font-family: var(--font);
+      font-size: 0.85rem;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    #uploadBtn:disabled,
+    #pickFolderBtn:disabled,
+    #folderUploadBtn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    #folderName {
+      flex: 1;
+      min-width: 120px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #uploadStatus {
+      max-width: 860px;
+      margin: 0.35rem auto 0;
+      padding: 0 0.25rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .upload-progress-wrap {
+      max-width: 860px;
+      margin: 0.35rem auto 0;
+      padding: 0 0.25rem;
+    }
+
+    .upload-progress-bar {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .upload-progress-fill {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--accent), #7dd3fc);
+      transition: width 0.35s ease;
+    }
+
+    .upload-progress-text {
+      margin: 0.35rem 0 0;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      line-height: 1.4;
+    }
+
+    .rag-toggle {
+      max-width: 860px;
+      margin: 0.5rem auto 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .chat-mode-switch {
+      max-width: 860px;
+      margin: 0.5rem auto 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .chat-mode-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    }
+
+    .chat-mode-option:has(input:checked) {
+      border-color: rgba(61, 214, 195, 0.45);
+      background: var(--accent-dim);
+      color: var(--text);
+    }
+
+    .chat-mode-option input {
+      accent-color: var(--accent);
+    }
+
+    .chat-mode-hint {
+      max-width: 860px;
+      margin: 0.35rem auto 0;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .message-mode-tag {
+      display: inline-block;
+      margin-left: 0.45rem;
+      padding: 0.05rem 0.4rem;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      font-weight: 500;
+      vertical-align: middle;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .message-mode-tag.rag {
+      border-color: rgba(61, 214, 195, 0.35);
+      color: var(--accent);
+    }
+
+    .message-mode-tag.direct {
+      border-color: rgba(139, 155, 176, 0.35);
+      color: var(--text-muted);
+    }
+
+    .vector-files.disabled {
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    .rag-toggle input {
+      accent-color: var(--accent);
+    }
+
+    .docforge-status {
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      background: var(--surface-2);
+    }
+
+    .docforge-status.ready {
+      color: var(--accent);
+      border-color: rgba(56, 189, 248, 0.35);
+    }
+
+    .docforge-status.error {
+      color: var(--danger);
+      border-color: rgba(248, 113, 113, 0.35);
+    }
+
+    .vector-files {
+      max-width: 860px;
+      margin: 0.5rem auto 0;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+    }
+
+    .vector-files-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .vector-files-title {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .vector-files-actions button {
+      height: 30px;
+      padding: 0 0.7rem;
+      font-size: 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      margin-left: 0.4rem;
+    }
+
+    .vector-files-list {
+      max-height: 130px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+    }
+
+    .vector-file-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      color: var(--text);
+    }
+
+    .vector-file-item small {
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .message-sources {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+      max-width: 760px;
+      line-height: 1.5;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes bounce {
+      0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-4px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .message, .typing span { animation: none; }
+    }
+
+    @media (max-width: 600px) {
+      header {
+        flex-wrap: wrap;
+      }
+
+      .status {
+        order: 3;
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>本地大模型对话</h1>
+      <p>myllm · Ollama</p>
+    </div>
+    <button class="settings-toggle" id="settingsToggle" type="button">系统提示词</button>
+    <a href="/eval.html" style="font-size:0.82rem;color:var(--accent);text-decoration:none;padding:0.35rem 0.65rem;border:1px solid var(--border);border-radius:999px;">模型评测</a>
+    <div class="status" id="statusBadge">连接中…</div>
+  </header>
+
+  <section class="settings-panel" id="settingsPanel" aria-label="系统提示词设置">
+    <label for="systemPrompt">系统提示词（可选，用于设定助手角色）</label>
+    <textarea id="systemPrompt" placeholder="例如：你是一个简洁友好的 Java 技术助手，回答尽量简短。"></textarea>
+  </section>
+
+  <main id="chatMain">
+    <div class="welcome" id="welcome">
+      <strong>开始与本地模型对话</strong>
+      消息将发送至本机 Ollama 服务，数据不会离开你的电脑。
+    </div>
+  </main>
+
+  <footer>
+    <div class="input-row">
+      <textarea
+        id="messageInput"
+        aria-label="聊天消息"
+        rows="1"
+        placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+        autocomplete="off"
+      ></textarea>
+      <button id="sendBtn" type="button">发送</button>
+    </div>
+    <div class="upload-row">
+      <input id="fileInput" type="file" aria-label="选择上传文件"
+        accept=".txt,.md,.doc,.docx,.csv,.json,.xml,.html,.log,.pdf" />
+      <select id="chunkStrategy" aria-label="分块策略" title="选择文件向量化时使用的分块策略">
+        <option value="fixed">固定大小分块</option>
+        <option value="recursive">递归分块</option>
+        <option value="document">基于文档分块</option>
+        <option value="semantic">语义分块</option>
+        <option value="smart" selected>智能分块（推荐）</option>
+      </select>
+      <select id="parseMode" aria-label="解析模式" title="选择文件解析方式">
+        <option value="auto" selected>智能解析（推荐）</option>
+        <option value="local">本地解析</option>
+        <option value="docling">Docling 解析</option>
+        <option value="maker">Maker 解析（PDF）</option>
+      </select>
+      <span id="docforgeStatus" class="docforge-status">检测中...</span>
+      <button id="uploadBtn" type="button">上传并向量化</button>
+    </div>
+    <div class="upload-row">
+      <input id="folderInput" type="file" aria-label="选择上传文件夹"
+        webkitdirectory directory multiple hidden />
+      <button id="pickFolderBtn" type="button">选择文件夹</button>
+      <span id="folderName">未选择文件夹</span>
+      <button id="folderUploadBtn" type="button" disabled>批量向量化</button>
+    </div>
+    <p id="uploadStatus">未上传文件</p>
+    <div id="uploadProgressWrap" class="upload-progress-wrap" hidden>
+      <div class="upload-progress-bar">
+        <div id="uploadProgressFill" class="upload-progress-fill" style="width:0%"></div>
+      </div>
+      <p id="uploadProgressText" class="upload-progress-text"></p>
+    </div>
+    <div class="chat-mode-switch" role="radiogroup" aria-label="对话模式">
+      <label class="chat-mode-option">
+        <input type="radio" name="chatMode" value="rag" checked />
+        知识库问答 (RAG)
+      </label>
+      <label class="chat-mode-option">
+        <input type="radio" name="chatMode" value="direct" />
+        直接对话 (LLM)
+      </label>
+    </div>
+    <p id="chatModeHint" class="chat-mode-hint">知识库问答：从已入库文档检索相关内容后回答</p>
+    <section class="vector-files" id="vectorFilesSection">
+      <div class="vector-files-header">
+        <div class="vector-files-title">知识库文件（勾选后仅检索选中项，未勾选则全库检索）</div>
+        <div class="vector-files-actions">
+          <button id="refreshFilesBtn" type="button">刷新</button>
+          <button id="deleteFilesBtn" type="button">删除选中</button>
+        </div>
+      </div>
+      <div class="vector-files-list" id="vectorFilesList">
+        <div class="hint">暂无已入库文件</div>
+      </div>
+    </section>
+    <p class="hint">首次回复可能需要十几秒，请耐心等待</p>
+  </footer>
+
+  <script type="module">
+    const chatMain = document.getElementById('chatMain');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const statusBadge = document.getElementById('statusBadge');
+    const systemPrompt = document.getElementById('systemPrompt');
+    const settingsToggle = document.getElementById('settingsToggle');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const welcome = document.getElementById('welcome');
+    const fileInput = document.getElementById('fileInput');
+    const folderInput = document.getElementById('folderInput');
+    const pickFolderBtn = document.getElementById('pickFolderBtn');
+    const folderName = document.getElementById('folderName');
+    const folderUploadBtn = document.getElementById('folderUploadBtn');
+    const chunkStrategy = document.getElementById('chunkStrategy');
+    const parseModeSelect = document.getElementById('parseMode');
+    const docforgeStatus = document.getElementById('docforgeStatus');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const uploadProgressWrap = document.getElementById('uploadProgressWrap');
+    const uploadProgressFill = document.getElementById('uploadProgressFill');
+    const uploadProgressText = document.getElementById('uploadProgressText');
+
+    const LOCAL_EXTENSIONS = ['.txt', '.md', '.doc', '.docx', '.csv', '.json', '.xml', '.html', '.log'];
+    let parseCapabilities = {
+      localExtensions: LOCAL_EXTENSIONS,
+      docforgeEnabled: false,
+      docforgeReady: false,
+      engines: [],
+      remoteExtensions: [],
+      syncMaxSizeMb: 5,
+      asyncMaxSizeMb: 50
+    };
+    let folderFiles = [];
+    const CHAT_MODE_STORAGE_KEY = 'myllm.chatMode';
+    const chatModeInputs = document.querySelectorAll('input[name="chatMode"]');
+    const chatModeHint = document.getElementById('chatModeHint');
+    const vectorFilesSection = document.getElementById('vectorFilesSection');
+    const refreshFilesBtn = document.getElementById('refreshFilesBtn');
+    const deleteFilesBtn = document.getElementById('deleteFilesBtn');
+    const vectorFilesList = document.getElementById('vectorFilesList');
+
+    let isSending = false;
+
+    settingsToggle.addEventListener('click', () => {
+      settingsPanel.classList.toggle('open');
+    });
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/api/chat/health');
+        if (!res.ok) throw new Error('服务不可用');
+        const text = await res.text();
+        statusBadge.textContent = text.replace('ok - ', '');
+        statusBadge.classList.remove('error');
+      } catch {
+        statusBadge.textContent = '未连接后端';
+        statusBadge.classList.add('error');
+      }
+    }
+
+    function getSelectedParseMode() {
+      return parseModeSelect.value || 'auto';
+    }
+
+    function isRemoteParseMode(mode) {
+      return mode === 'docling' || mode === 'maker';
+    }
+
+    function getEngineCapability(mode) {
+      return parseCapabilities.engines.find((item) => item.name === mode);
+    }
+
+    function addExtensions(extensions, candidates) {
+      for (const ext of (candidates || [])) {
+        if (ext && !extensions.includes(ext)) {
+          extensions.push(ext);
+        }
+      }
+    }
+
+    function getSupportedExtensions() {
+      const extensions = [...parseCapabilities.localExtensions];
+      const mode = getSelectedParseMode();
+      if (mode === 'auto' && parseCapabilities.docforgeEnabled) {
+        // 智能模式：列出 DocForge 支持的全部扩展名，不因瞬时未就绪而隐藏 PDF。
+        for (const engine of parseCapabilities.engines) {
+          addExtensions(extensions, engine.extensions);
+        }
+        addExtensions(extensions, parseCapabilities.remoteExtensions);
+      } else if (isRemoteParseMode(mode) && parseCapabilities.docforgeEnabled) {
+        const engine = getEngineCapability(mode);
+        addExtensions(extensions, engine?.extensions);
+      }
+      return extensions.sort();
+    }
+
+    function updateFileAccept() {
+      fileInput.accept = getSupportedExtensions().join(',');
+    }
+
+    function updateDocforgeUi() {
+      const enabled = parseCapabilities.docforgeEnabled;
+      const ready = parseCapabilities.docforgeReady;
+      const mode = getSelectedParseMode();
+      const remoteOptions = parseModeSelect.querySelectorAll('option[value="docling"], option[value="maker"]');
+      remoteOptions.forEach((option) => {
+        const engine = getEngineCapability(option.value);
+        option.disabled = !enabled || !ready || !engine?.available;
+        option.title = engine?.unavailableReason || '';
+      });
+
+      if (!enabled) {
+        if (isRemoteParseMode(mode)) {
+          parseModeSelect.value = 'auto';
+        }
+        docforgeStatus.textContent = '未启用';
+        docforgeStatus.className = 'docforge-status';
+      } else if (ready) {
+        const engineNames = parseCapabilities.engines
+          .filter((item) => item.available)
+          .map((item) => item.name)
+          .join(', ') || '无可用引擎';
+        docforgeStatus.textContent = `DocForge 已连接 (${engineNames})`;
+        docforgeStatus.className = 'docforge-status ready';
+      } else {
+        if (isRemoteParseMode(mode)) {
+          parseModeSelect.value = 'auto';
+        }
+        docforgeStatus.textContent = 'DocForge 繁忙或未就绪（大文件解析中请稍候）';
+        docforgeStatus.className = 'docforge-status error';
+      }
+      updateFileAccept();
+    }
+
+    let capabilitiesRefreshTimer = null;
+
+    function scheduleCapabilitiesRefresh() {
+      if (capabilitiesRefreshTimer) {
+        return;
+      }
+      capabilitiesRefreshTimer = globalThis.setTimeout(async () => {
+        capabilitiesRefreshTimer = null;
+        await loadParseCapabilities({ silent: true });
+        if (parseCapabilities.docforgeEnabled && !parseCapabilities.docforgeReady) {
+          scheduleCapabilitiesRefresh();
+        }
+      }, 5000);
+    }
+
+    async function loadParseCapabilities(options = {}) {
+      const silent = options.silent === true;
+      try {
+        const res = await fetch('/api/files/parse-capabilities');
+        if (!res.ok) throw new Error('无法获取解析能力');
+        parseCapabilities = await res.json();
+      } catch {
+        if (!parseCapabilities.engines?.length) {
+          parseCapabilities = {
+            localExtensions: LOCAL_EXTENSIONS,
+            docforgeEnabled: false,
+            docforgeReady: false,
+            engines: [],
+            remoteExtensions: [],
+            syncMaxSizeMb: 5,
+            asyncMaxSizeMb: 50
+          };
+        }
+        if (!silent) {
+          uploadStatus.textContent = '解析能力探测失败，将使用本地格式；稍后自动重试';
+          uploadStatus.style.color = 'var(--text-muted)';
+        }
+        scheduleCapabilitiesRefresh();
+      }
+      updateDocforgeUi();
+      if (parseCapabilities.docforgeEnabled && !parseCapabilities.docforgeReady) {
+        scheduleCapabilitiesRefresh();
+      }
+    }
+
+    parseModeSelect.addEventListener('change', () => {
+      updateFileAccept();
+      const mode = getSelectedParseMode();
+      if (!isRemoteParseMode(mode)) {
+        if (uploadStatus.style.color === 'var(--danger)' &&
+            uploadStatus.textContent.includes('DocForge')) {
+          uploadStatus.textContent = '未上传文件';
+          uploadStatus.style.color = 'var(--text-muted)';
+        }
+        return;
+      }
+      const engine = getEngineCapability(mode);
+      if (!parseCapabilities.docforgeReady || !engine?.available) {
+        uploadStatus.textContent = engine?.unavailableReason
+          || 'DocForge 对应引擎未就绪，已切回智能解析；Word 等文件仍可用本地解析';
+        uploadStatus.style.color = 'var(--danger)';
+        parseModeSelect.value = 'auto';
+        updateDocforgeUi();
+        scheduleCapabilitiesRefresh();
+      }
+    });
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) {
+        setUploadProgress(false, 0, '');
+        return;
+      }
+      if (!isSupportedFile(file)) {
+        uploadStatus.textContent = `当前解析模式不支持该文件类型，请切换模式或等待 DocForge 就绪`;
+        uploadStatus.style.color = 'var(--danger)';
+        setUploadProgress(false, 0, '');
+        return;
+      }
+      const mode = getSelectedParseMode();
+      const ext = (file.name || '').toLowerCase().split('.').pop();
+      const estimate = await fetchParseEstimate(file);
+      const etaHint = estimate ? `，预计 ${formatEta(estimate.etaSeconds)}` : '';
+      if (mode === 'auto' && LOCAL_EXTENSIONS.includes(`.${ext}`)) {
+        uploadStatus.textContent = `已选择 ${file.name}，智能模式将优先本地解析${etaHint}`;
+      } else if (shouldUseAsyncUpload(file)) {
+        uploadStatus.textContent = `已选择 ${file.name}，将使用后台任务处理${etaHint}`;
+      } else {
+        uploadStatus.textContent = `已选择 ${file.name}${etaHint}`;
+      }
+      uploadStatus.style.color = 'var(--text-muted)';
+      setUploadProgress(false, 0, '');
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        loadParseCapabilities({ silent: true });
+      }
+    });
+
+    function isDirectMode() {
+      const selected = document.querySelector('input[name="chatMode"]:checked');
+      return selected?.value === 'direct';
+    }
+
+    function chatModeLabel(direct) {
+      return direct ? '直连' : 'RAG';
+    }
+
+    function syncChatModeUi() {
+      const direct = isDirectMode();
+      if (vectorFilesSection) {
+        vectorFilesSection.classList.toggle('disabled', direct);
+      }
+      if (chatModeHint) {
+        chatModeHint.textContent = direct
+          ? '直接对话：不检索知识库，输入内容原样发送给大模型（请自行核实回答）'
+          : '知识库问答：从已入库文档检索相关内容后回答';
+      }
+    }
+
+    function restoreChatModePreference() {
+      const saved = localStorage.getItem(CHAT_MODE_STORAGE_KEY);
+      if (saved !== 'rag' && saved !== 'direct') {
+        syncChatModeUi();
+        return;
+      }
+      for (const input of chatModeInputs) {
+        input.checked = input.value === saved;
+      }
+      syncChatModeUi();
+    }
+
+    for (const input of chatModeInputs) {
+      input.addEventListener('change', () => {
+        const selected = document.querySelector('input[name="chatMode"]:checked');
+        if (selected) {
+          localStorage.setItem(CHAT_MODE_STORAGE_KEY, selected.value);
+        }
+        syncChatModeUi();
+      });
+    }
+
+    restoreChatModePreference();
+
+    function formatSourceLabel(s, i) {
+      const pct = (s.similarity * 100).toFixed(1) + '%';
+      const heading = s.headingPath ? ` | ${s.headingPath}` : '';
+      return `[${i + 1}] ${s.fileName}#${s.chunkIndex}${heading} (${pct})`;
+    }
+
+    function appendMessage(role, content, isLoading = false, sources = null, mode = null) {
+      if (welcome) welcome.remove();
+
+      const wrapper = document.createElement('div');
+      wrapper.className = `message ${role}`;
+      if (mode) {
+        wrapper.dataset.chatMode = mode;
+      }
+
+      const roleLabel = document.createElement('div');
+      roleLabel.className = 'message-role';
+      roleLabel.textContent = role === 'user' ? '你' : '助手';
+      if (mode) {
+        const tag = document.createElement('span');
+        tag.className = `message-mode-tag ${mode}`;
+        tag.textContent = chatModeLabel(mode === 'direct');
+        roleLabel.appendChild(tag);
+      }
+
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+
+      if (isLoading) {
+        bubble.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+        wrapper.dataset.loading = 'true';
+      } else {
+        bubble.textContent = content;
+      }
+
+      wrapper.appendChild(roleLabel);
+      wrapper.appendChild(bubble);
+
+      if (sources && sources.length > 0) {
+        const sourcesEl = document.createElement('div');
+        sourcesEl.className = 'message-sources';
+        sourcesEl.textContent = '引用: ' + sources.map(formatSourceLabel).join(' · ');
+        wrapper.appendChild(sourcesEl);
+      }
+
+      chatMain.appendChild(wrapper);
+      chatMain.scrollTop = chatMain.scrollHeight;
+      return wrapper;
+    }
+
+    function setSending(sending) {
+      isSending = sending;
+      sendBtn.disabled = sending;
+      messageInput.disabled = sending;
+    }
+
+    function getSelectedFileIds() {
+      return Array.from(document.querySelectorAll('.vector-file-checkbox:checked'))
+        .map((el) => el.value);
+    }
+
+    function renderFiles(files) {
+      if (!files || files.length === 0) {
+        vectorFilesList.innerHTML = '<div class="hint">暂无已入库文件</div>';
+        return;
+      }
+      vectorFilesList.innerHTML = '';
+      for (const file of files) {
+        const item = document.createElement('label');
+        item.className = 'vector-file-item';
+        item.innerHTML = `
+          <input class="vector-file-checkbox" type="checkbox" value="${file.fileId}" />
+          <span>${file.fileName}</span>
+          <small>${file.contentType ? file.contentType + ' · ' : ''}${file.chunkCount} chunks</small>
+        `;
+        vectorFilesList.appendChild(item);
+      }
+    }
+
+    async function refreshVectorFiles() {
+      try {
+        const res = await fetch('/api/files');
+        if (!res.ok) throw new Error('加载失败');
+        const files = await res.json();
+        renderFiles(files);
+      } catch {
+        vectorFilesList.innerHTML = '<div class="hint" style="color:var(--danger)">文件列表加载失败</div>';
+      }
+    }
+
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text || isSending) return;
+
+      const direct = isDirectMode();
+      const mode = direct ? 'direct' : 'rag';
+
+      appendMessage('user', text, false, null, mode);
+      messageInput.value = '';
+      messageInput.style.height = 'auto';
+
+      const loadingEl = appendMessage('assistant', '', true, null, mode);
+      setSending(true);
+
+      try {
+        const body = {
+          message: text,
+          useRag: !direct,
+          chatMode: direct ? 'DIRECT' : 'RAG',
+        };
+        if (!direct) {
+          const selectedFileIds = getSelectedFileIds();
+          if (selectedFileIds.length > 0) {
+            body.fileIds = selectedFileIds;
+          }
+        }
+        const prompt = systemPrompt.value.trim();
+        if (prompt) body.systemPrompt = prompt;
+
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `请求失败 (${res.status})`);
+        }
+
+        const data = await res.json();
+        const bubble = loadingEl.querySelector('.message-bubble');
+        bubble.textContent = data.reply || '（无回复内容）';
+        delete loadingEl.dataset.loading;
+
+        if (data.sources && data.sources.length > 0) {
+          const sourcesEl = document.createElement('div');
+          sourcesEl.className = 'message-sources';
+          sourcesEl.textContent = '引用: ' + data.sources.map(formatSourceLabel).join(' · ');
+          loadingEl.appendChild(sourcesEl);
+        }
+      } catch (err) {
+        const bubble = loadingEl.querySelector('.message-bubble');
+        bubble.textContent = '请求失败：' + (err.message || '未知错误');
+        bubble.style.color = 'var(--danger)';
+      } finally {
+        setSending(false);
+        chatMain.scrollTop = chatMain.scrollHeight;
+        messageInput.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+
+    function isSupportedFile(file) {
+      const name = (file.name || '').toLowerCase();
+      const baseName = name.split(/[/\\]/).pop() || name;
+      if (baseName.startsWith('~$')) {
+        return false;
+      }
+      return getSupportedExtensions().some((ext) => name.endsWith(ext));
+    }
+
+    function formatStrategyText(data) {
+      return data.requestedChunkStrategy === data.appliedChunkStrategy
+        ? data.appliedChunkStrategy
+        : `${data.requestedChunkStrategy}→${data.appliedChunkStrategy}`;
+    }
+
+    function formatUploadSummary(data) {
+      const strategyText = formatStrategyText(data);
+      const requestedMode = data.requestedParseMode || data.parseMode || 'auto';
+      const appliedMode = data.parseMode || 'local';
+      const parseLabel = requestedMode === appliedMode ? appliedMode : `${requestedMode}→${appliedMode}`;
+      let summary = `${data.fileName}, 解析=${parseLabel}, 引擎=${data.parserEngine || appliedMode}, 分块=${strategyText}, 清理=${data.rawCharCount}→${data.cleanedCharCount}字符, chunks=${data.chunkCount}`;
+      const parsedPages = data.parsedPages ?? data.doclingPages;
+      if (isRemoteParseMode(data.parseMode) && parsedPages != null) {
+        const engineLabel = data.parseMode === 'maker' ? 'Maker' : 'Docling';
+        summary += `, ${engineLabel}=${parsedPages}页/${data.parseDurationMs || 0}ms`;
+      }
+      if (data.parseFallbackReason) {
+        summary += `, 降级=${data.parseFallbackReason}`;
+      }
+      return summary;
+    }
+
+    function fileForUpload(file, useRelativePath) {
+      if (!useRelativePath || !file.webkitRelativePath) {
+        return file;
+      }
+      return new File([file], file.webkitRelativePath, { type: file.type, lastModified: file.lastModified });
+    }
+
+    function isPdfFile(file) {
+      return (file.name || '').toLowerCase().endsWith('.pdf');
+    }
+
+    function shouldUseAsyncUpload(file) {
+      const mode = getSelectedParseMode();
+      if (mode === 'maker') {
+        return true;
+      }
+      // Docling / 智能模式解析 PDF 时走后台任务，避免同步 HTTP 阻塞且无进度。
+      if (isPdfFile(file) && (mode === 'docling' || mode === 'auto')) {
+        return true;
+      }
+      return file.size > (parseCapabilities.asyncThresholdBytes || 1048576);
+    }
+
+    function formatEta(seconds) {
+      if (seconds == null || seconds <= 0) {
+        return '';
+      }
+      if (seconds < 60) {
+        return `约 ${seconds} 秒`;
+      }
+      return `约 ${Math.ceil(seconds / 60)} 分钟`;
+    }
+
+    function setUploadProgress(visible, percent, message) {
+      uploadProgressWrap.hidden = !visible;
+      const safePercent = Math.max(0, Math.min(100, percent || 0));
+      uploadProgressFill.style.width = `${safePercent}%`;
+      uploadProgressText.textContent = message || '';
+    }
+
+    async function fetchParseEstimate(file) {
+      try {
+        const params = new URLSearchParams({
+          parseMode: getSelectedParseMode(),
+          fileSizeBytes: String(file.size)
+        });
+        const res = await fetch(`/api/files/parse-estimate?${params}`);
+        if (!res.ok) {
+          return null;
+        }
+        return res.json();
+      } catch {
+        return null;
+      }
+    }
+
+    async function fetchCompletedUpload(taskId) {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const resultRes = await fetch(`/api/files/tasks/${taskId}/result`);
+        if (resultRes.ok) {
+          return resultRes.json();
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      throw new Error('任务成功但结果尚未就绪');
+    }
+
+    function throwIfUploadStopped(status) {
+      if (status.status === 'FAILED' || status.status === 'CANCELLED') {
+        throw new Error(status.errorMessage || status.message || '任务失败');
+      }
+    }
+
+    async function pollUploadTask(taskId) {
+      while (true) {
+        const res = await fetch(`/api/files/tasks/${taskId}`);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `查询任务失败 (${res.status})`);
+        }
+        const status = await res.json();
+        const etaText = formatEta(status.etaSeconds);
+        const graphHint = status.graphIndexEnqueued ? ' · Neo4j 构图已入队' : '';
+        const etaHint = etaText ? ' · ' + etaText : '';
+        const progressMessage = `${status.phase} ${status.percent}% · ${status.message || ''}${etaHint}${graphHint}`;
+        setUploadProgress(true, status.percent, progressMessage);
+        uploadStatus.textContent = `任务 ${taskId.slice(0, 8)}… ${status.status}`;
+        uploadStatus.style.color = 'var(--text-muted)';
+
+        if (status.status === 'SUCCEEDED') {
+          return fetchCompletedUpload(taskId);
+        }
+        throwIfUploadStopped(status);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+
+    async function uploadFileAsync(file, useRelativePath = false) {
+      const formData = new FormData();
+      formData.append('file', fileForUpload(file, useRelativePath));
+      formData.append('chunkStrategy', chunkStrategy.value);
+      formData.append('parseMode', getSelectedParseMode());
+      const res = await fetch('/api/files/upload/async', {
+        method: 'POST',
+        body: formData
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `请求失败 (${res.status})`);
+      }
+      const created = await res.json();
+      setUploadProgress(true, 1, created.message || '任务已创建');
+      if (created.etaSeconds) {
+        uploadStatus.textContent = `预计耗时 ${formatEta(created.etaSeconds)}`;
+      }
+      return pollUploadTask(created.taskId);
+    }
+
+    async function uploadFileForEmbedding(file, useRelativePath = false) {
+      if (shouldUseAsyncUpload(file)) {
+        return uploadFileAsync(file, useRelativePath);
+      }
+      const formData = new FormData();
+      formData.append('file', fileForUpload(file, useRelativePath));
+      formData.append('chunkStrategy', chunkStrategy.value);
+      formData.append('parseMode', getSelectedParseMode());
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        body: formData
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `请求失败 (${res.status})`);
+      }
+      return res.json();
+    }
+
+    function setUploadBusy(busy) {
+      uploadBtn.disabled = busy;
+      pickFolderBtn.disabled = busy;
+      folderUploadBtn.disabled = busy || folderFiles.length === 0;
+    }
+
+    function getFolderLabel(files) {
+      if (!files.length) {
+        return '未选择文件夹';
+      }
+      const firstPath = files[0].webkitRelativePath || files[0].name;
+      const root = firstPath.includes('/') ? firstPath.split('/')[0] : firstPath;
+      return `${root}（${files.length} 个文档）`;
+    }
+
+    pickFolderBtn.addEventListener('click', () => {
+      folderInput.click();
+    });
+
+    folderInput.addEventListener('change', () => {
+      const selected = Array.from(folderInput.files || []).filter(isSupportedFile);
+      folderFiles = selected.sort((a, b) =>
+        (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, 'zh-CN')
+      );
+      folderName.textContent = getFolderLabel(folderFiles);
+      folderUploadBtn.disabled = folderFiles.length === 0;
+      if (folderFiles.length === 0) {
+        uploadStatus.textContent = '文件夹中未找到支持的文档（请检查扩展名或切换解析模式）';
+        uploadStatus.style.color = 'var(--danger)';
+        return;
+      }
+      uploadStatus.textContent = `已选择 ${folderFiles.length} 个文档，点击「批量向量化」开始处理`;
+      uploadStatus.style.color = 'var(--text-muted)';
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) {
+        uploadStatus.textContent = '请先选择文件';
+        uploadStatus.style.color = 'var(--danger)';
+        return;
+      }
+
+      setUploadBusy(true);
+      setUploadProgress(shouldUseAsyncUpload(file), 0, '准备上传…');
+      const selectedMode = getSelectedParseMode();
+      let modeLabel = '智能';
+      if (selectedMode === 'local') {
+        modeLabel = '本地';
+      } else if (selectedMode === 'maker') {
+        modeLabel = 'Maker';
+      } else if (selectedMode === 'docling') {
+        modeLabel = 'Docling';
+      }
+      if (selectedMode === 'local') {
+        uploadStatus.textContent = '上传并向量化中...';
+      } else if (selectedMode === 'maker') {
+        uploadStatus.textContent = 'Maker 异步解析并向量化中，大 PDF 可能需要数分钟，请耐心等待...';
+      } else if (shouldUseAsyncUpload(file)) {
+        uploadStatus.textContent = `${modeLabel} 后台解析并向量化中，请查看下方进度...`;
+      } else {
+        uploadStatus.textContent = `${modeLabel} 解析并向量化中...`;
+      }
+      uploadStatus.style.color = 'var(--text-muted)';
+
+      try {
+        const data = await uploadFileForEmbedding(file);
+        uploadStatus.textContent = `已入库: ${formatUploadSummary(data)}, dim=${data.embeddingDimension}`;
+        uploadStatus.style.color = 'var(--accent)';
+        setUploadProgress(false, 100, '完成');
+        await refreshVectorFiles();
+      } catch (err) {
+        uploadStatus.textContent = '向量化失败: ' + (err.message || '未知错误');
+        uploadStatus.style.color = 'var(--danger)';
+        setUploadProgress(false, 0, '');
+      } finally {
+        setUploadBusy(false);
+      }
+    });
+
+    folderUploadBtn.addEventListener('click', async () => {
+      if (folderFiles.length === 0) {
+        uploadStatus.textContent = '请先选择包含文档的文件夹';
+        uploadStatus.style.color = 'var(--danger)';
+        return;
+      }
+
+      setUploadBusy(true);
+      setUploadProgress(true, 0, '批量任务开始…');
+      const total = folderFiles.length;
+      let success = 0;
+      let failed = 0;
+      const failures = [];
+      let totalChunks = 0;
+
+      for (let i = 0; i < folderFiles.length; i++) {
+        const file = folderFiles[i];
+        const label = file.webkitRelativePath || file.name;
+        uploadStatus.textContent = `批量向量化中 (${i + 1}/${total}): ${label}`;
+        uploadStatus.style.color = 'var(--text-muted)';
+
+        try {
+          const data = await uploadFileForEmbedding(file, true);
+          success += 1;
+          totalChunks += data.chunkCount || 0;
+        } catch (err) {
+          failed += 1;
+          failures.push(`${label}: ${err.message || '未知错误'}`);
+        }
+      }
+
+      await refreshVectorFiles();
+
+      if (failed === 0) {
+        uploadStatus.textContent = `批量完成: 成功 ${success}/${total}，共 ${totalChunks} 个分片`;
+        uploadStatus.style.color = 'var(--accent)';
+      } else {
+        const preview = failures.slice(0, 3).join('；');
+        const suffix = failures.length > 3 ? ` 等 ${failures.length} 项` : '';
+        uploadStatus.textContent = `批量完成: 成功 ${success}，失败 ${failed}。${preview}${suffix}`;
+        uploadStatus.style.color = failed === total ? 'var(--danger)' : 'var(--accent)';
+      }
+
+      setUploadBusy(false);
+      setUploadProgress(false, failed === 0 ? 100 : 0, failed === 0 ? '批量完成' : '');
+    });
+
+    refreshFilesBtn.addEventListener('click', refreshVectorFiles);
+
+    deleteFilesBtn.addEventListener('click', async () => {
+      const selected = getSelectedFileIds();
+      if (selected.length === 0) {
+        uploadStatus.textContent = '请先勾选要删除的文件';
+        uploadStatus.style.color = 'var(--danger)';
+        return;
+      }
+
+      deleteFilesBtn.disabled = true;
+      try {
+        for (const fileId of selected) {
+          const res = await fetch(`/api/files/${encodeURIComponent(fileId)}`, { method: 'DELETE' });
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || `删除失败 (${res.status})`);
+          }
+        }
+        uploadStatus.textContent = `已删除 ${selected.length} 个文件`;
+        uploadStatus.style.color = 'var(--accent)';
+        await refreshVectorFiles();
+      } catch (err) {
+        uploadStatus.textContent = '删除失败: ' + (err.message || '未知错误');
+        uploadStatus.style.color = 'var(--danger)';
+      } finally {
+        deleteFilesBtn.disabled = false;
+      }
+    });
+
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    messageInput.addEventListener('input', () => {
+      messageInput.style.height = 'auto';
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 160) + 'px';
+    });
+
+    await Promise.all([checkHealth(), loadParseCapabilities(), refreshVectorFiles()]);
+    messageInput.focus();
+  </script>
+</body>
+</html>

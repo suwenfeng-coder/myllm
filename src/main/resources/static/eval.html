@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>模型聪明度评测 · myllm</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a222d;
+      --surface-2: #232d3b;
+      --border: #2e3a4a;
+      --text: #e8edf4;
+      --text-muted: #8b9bb0;
+      --accent: #3dd6c3;
+      --accent-dim: rgba(61, 214, 195, 0.12);
+      --danger: #f07178;
+      --warn: #ffcc66;
+      --radius: 12px;
+      --font: "Noto Sans SC", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      line-height: 1.6;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .brand h1 { font-size: 1rem; font-weight: 600; }
+    .brand p { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); }
+    .nav-link {
+      font-size: 0.82rem;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 0.35rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+    }
+    .model-badge {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem 2rem; }
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .tab {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 0.88rem;
+    }
+    .tab.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 { font-size: 0.95rem; margin-bottom: 0.75rem; }
+    .row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.75rem; }
+    label { font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem; }
+    input, select, textarea {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.55rem 0.7rem;
+      font-family: var(--font);
+      font-size: 0.88rem;
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    button {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 0.5rem 0.9rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button.secondary {
+      color: var(--text-muted);
+      border-color: var(--border);
+      background: var(--surface-2);
+    }
+    button.danger { color: var(--danger); border-color: var(--danger); background: rgba(240,113,120,0.1); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+    .list { list-style: none; }
+    .list li {
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      background: var(--surface-2);
+    }
+    .list li.selected { border-color: var(--accent); background: var(--accent-dim); }
+    .list li:hover { border-color: var(--accent); }
+    .muted { color: var(--text-muted); font-size: 0.82rem; }
+    .mono { font-family: var(--mono); font-size: 0.78rem; }
+    .score-good { color: var(--accent); }
+    .score-bad { color: var(--danger); }
+    .report-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: baseline;
+      margin-bottom: 1rem;
+    }
+    .report-header .total {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .dim-bars { display: grid; gap: 0.35rem; margin: 0.75rem 0; }
+    .dim-row { display: grid; grid-template-columns: 88px 1fr 36px; gap: 0.5rem; align-items: center; font-size: 0.82rem; }
+    .dim-bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+    .dim-fill { height: 100%; background: var(--accent); }
+    .item-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+    }
+    .item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface-2);
+      cursor: pointer;
+    }
+    .item-body { padding: 1rem; display: none; border-top: 1px solid var(--border); }
+    .item-card.open .item-body { display: block; }
+    .item-block { margin-bottom: 0.75rem; }
+    .item-block pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--bg);
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      max-height: 280px;
+      overflow: auto;
+    }
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      font-size: 0.82rem;
+    }
+    .score-grid input { width: 100%; }
+    .progress {
+      height: 8px;
+      background: var(--surface-2);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 0.5rem 0;
+    }
+    .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+    .status-tag {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      background: var(--surface);
+    }
+    .status-RUNNING { color: var(--warn); }
+    .status-COMPLETED { color: var(--accent); }
+    .status-FAILED, .status-CANCELLED { color: var(--danger); }
+    .status-ANSWERING, .status-SCORING { color: var(--warn); }
+    .status-DONE { color: var(--accent); }
+    .live-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .live-score-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 1rem;
+      min-width: 140px;
+    }
+    .live-score-box .label { font-size: 0.78rem; color: var(--text-muted); display: block; }
+    .live-score-box .value { font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+    .live-score-box .hint { display: block; margin-top: 0.1rem; font-size: 0.7rem; color: var(--text-muted); }
+    .run-error {
+      display: none;
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      color: var(--danger);
+      background: rgba(240,113,120,0.08);
+      white-space: pre-wrap;
+    }
+    .live-dims { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.78rem; font-family: var(--mono); }
+    .live-dim { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.5rem; }
+    .live-current {
+      border: 1px solid var(--accent);
+      background: var(--accent-dim);
+      border-radius: var(--radius);
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .live-current .phase {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--warn);
+      margin-bottom: 0.5rem;
+    }
+    .live-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 480px;
+      overflow-y: auto;
+    }
+    .live-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 1rem;
+      background: var(--surface-2);
+    }
+    .live-item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      font-size: 0.88rem;
+    }
+    .live-item pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      background: var(--bg);
+      padding: 0.6rem;
+      border-radius: 6px;
+      max-height: 200px;
+      overflow: auto;
+      margin-top: 0.35rem;
+    }
+    .live-item .block-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem; }
+    .live-empty { color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>模型聪明度评测</h1>
+      <p id="modelInfo">加载中…</p>
+    </div>
+    <a class="nav-link" href="/">返回对话</a>
+    <div class="model-badge" id="statusBadge">就绪</div>
+  </header>
+
+  <main>
+    <div class="tabs">
+      <button class="tab active" data-tab="suites">题库管理</button>
+      <button class="tab" data-tab="run">开始评测</button>
+      <button class="tab" data-tab="history">历史记录</button>
+      <button class="tab" data-tab="report">答题报告</button>
+    </div>
+
+    <section class="panel active" id="panel-suites">
+      <div class="card">
+        <h2>题库</h2>
+        <div class="row">
+          <button id="importDefaultBtn">导入内置样卷</button>
+          <button class="secondary" id="newSuiteBtn">新建题库</button>
+          <button class="danger secondary" id="deleteSuiteBtn">删除题库</button>
+        </div>
+        <ul class="list" id="suiteList"></ul>
+      </div>
+      <div class="card">
+        <h2>题目编辑</h2>
+        <p class="muted" id="suiteHint">请选择题库</p>
+        <div class="grid-2">
+          <div><label>标题</label><input id="qTitle"></div>
+          <div><label>类别</label>
+            <select id="qCategory">
+              <option value="UNDERSTANDING">理解能力</option>
+              <option value="REASONING">推理能力</option>
+              <option value="CODE">代码能力</option>
+              <option value="DOMAIN">专业知识</option>
+              <option value="STABILITY">稳定性</option>
+              <option value="INSTRUCTION">指令遵循</option>
+              <option value="MIXED">综合</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem"><label>题干</label><textarea id="qPrompt"></textarea></div>
+        <div style="margin-top:0.75rem"><label>参考答案要点</label><textarea id="qReference"></textarea></div>
+        <div style="margin-top:0.75rem"><label>输出格式要求</label><input id="qOutputFormat"></div>
+        <div class="row" style="margin-top:0.75rem">
+          <button id="saveQuestionBtn">保存题目</button>
+          <button class="secondary" id="newQuestionBtn">新增题目</button>
+          <button class="danger secondary" id="deleteQuestionBtn">删除题目</button>
+        </div>
+        <ul class="list" id="questionList" style="margin-top:1rem"></ul>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-run">
+      <div class="card">
+        <h2>启动评测</h2>
+        <p class="muted">将逐题调用本地模型（不走 RAG），并由模型裁判六维打分。</p>
+        <div style="margin-top:0.75rem">
+          <label>选择题库</label>
+          <select id="runSuiteSelect"></select>
+        </div>
+        <div style="margin-top:0.75rem"><label>备注（可选）</label><input id="runNotes"></div>
+        <div class="row" style="margin-top:0.75rem">
+          <button id="startRunBtn">开始评测</button>
+          <button class="secondary" id="cancelRunBtn" disabled>取消</button>
+        </div>
+        <div id="runProgress" style="display:none;margin-top:1rem">
+          <div class="live-stats" id="liveStats">
+            <div class="live-score-box">
+              <span class="label">实时总分</span>
+              <span class="value" id="liveTotalScore">-</span>
+              <span class="hint" id="liveScoredCount">尚无已评分题目</span>
+            </div>
+            <div class="live-dims" id="liveDimScores"></div>
+          </div>
+          <div class="mono" id="runProgressText">0/0</div>
+          <div class="progress"><div class="progress-fill" id="runProgressBar" style="width:0%"></div></div>
+          <div class="run-error" id="runError"></div>
+        </div>
+      </div>
+      <div class="card" id="runLivePanel" style="display:none">
+        <h2>实时问答</h2>
+        <p class="muted">每题完成后自动更新；进行中的题目会显示模型回答（若有）。</p>
+        <div id="liveCurrent" class="live-current" style="display:none"></div>
+        <div id="liveFeed" class="live-feed"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-history">
+      <div class="card">
+        <h2>历史评测</h2>
+        <ul class="list" id="historyList"></ul>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-report">
+      <div id="reportEmpty" class="muted">选择历史记录或完成评测后查看答题卷</div>
+      <div id="reportContent" style="display:none">
+        <div class="card">
+          <div class="report-header">
+            <div>
+              <div class="muted" id="reportTitle"></div>
+              <div class="total" id="reportTotal"></div>
+            </div>
+            <div class="mono muted" id="reportMeta"></div>
+          </div>
+          <div class="run-error" id="reportError"></div>
+          <div class="dim-bars" id="dimBars"></div>
+          <div class="row">
+            <button class="secondary" id="continueRunBtn">编辑并继续下一轮</button>
+          </div>
+        </div>
+        <div id="itemCards"></div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    const DIM_LABELS = {
+      understanding: '理解', reasoning: '推理', code: '代码',
+      domain: '领域', stability: '稳定', instruction: '指令'
+    };
+    const CATEGORY_LABELS = {
+      UNDERSTANDING: '理解', REASONING: '推理', CODE: '代码',
+      DOMAIN: '领域', STABILITY: '稳定', INSTRUCTION: '指令', MIXED: '综合'
+    };
+
+    let suites = [];
+    let selectedSuiteId = null;
+    let selectedQuestionId = null;
+    let currentRunId = null;
+    let pollTimer = null;
+    let currentReport = null;
+    let lastRenderedItemCount = 0;
+
+    function computeLiveScore(run, items) {
+      if (run.totalScore != null) return run.totalScore;
+      const scored = items.filter(i => i.itemScore != null);
+      if (!scored.length) return null;
+      return Math.round(scored.reduce((s, i) => s + i.itemScore, 0) / scored.length * 10) / 10;
+    }
+
+    function phaseLabel(status) {
+      if (status === 'ANSWERING') return '模型答题中…';
+      if (status === 'SCORING') return '裁判打分中…';
+      if (status === 'PENDING') return '排队等待';
+      if (status === 'DONE') return '已完成';
+      if (status === 'FAILED') return '失败';
+      return status;
+    }
+
+    function renderLivePanel(report) {
+      const run = report.run;
+      const items = report.items;
+      const liveScore = computeLiveScore(run, items);
+      document.getElementById('liveTotalScore').textContent =
+        liveScore != null ? `${liveScore.toFixed(1)} / 5.0` : '-';
+      const scoredCount = items.filter(i => i.itemScore != null).length;
+      document.getElementById('liveScoredCount').textContent =
+        scoredCount ? `基于 ${scoredCount} 道已评分题目` : '尚无已评分题目';
+
+      const errorEl = document.getElementById('runError');
+      if (run.errorMessage) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = run.errorMessage;
+      } else {
+        errorEl.style.display = 'none';
+        errorEl.textContent = '';
+      }
+
+      const dimEl = document.getElementById('liveDimScores');
+      dimEl.innerHTML = '';
+      const dims = run.dimensionScores || {};
+      Object.entries(DIM_LABELS).forEach(([key, label]) => {
+        const val = dims[key];
+        if (val == null) return;
+        const span = document.createElement('span');
+        span.className = 'live-dim';
+        span.textContent = `${label} ${val.toFixed(1)}`;
+        dimEl.appendChild(span);
+      });
+
+      const active = items.find(i => i.status === 'ANSWERING' || i.status === 'SCORING');
+      const currentEl = document.getElementById('liveCurrent');
+      if (active) {
+        currentEl.style.display = 'block';
+        currentEl.innerHTML = `
+          <div class="phase">第 ${active.itemIndex} 题 · ${phaseLabel(active.status)}</div>
+          <strong>${escapeHtml(active.title)}</strong>
+          <span class="muted"> · ${CATEGORY_LABELS[active.category] || active.category}</span>
+          <div class="block-label">题目</div>
+          <pre>${escapeHtml(active.prompt)}</pre>
+          ${active.modelAnswer ? `<div class="block-label">模型回答</div><pre>${escapeHtml(active.modelAnswer)}</pre>` : '<p class="muted" style="margin-top:0.5rem">等待模型回答…</p>'}
+        `;
+      } else {
+        currentEl.style.display = 'none';
+      }
+
+      const feed = document.getElementById('liveFeed');
+      const finished = items.filter(i => i.status === 'DONE' || i.status === 'FAILED');
+      if (!finished.length && !active) {
+        feed.innerHTML = '<div class="live-empty">等待第一题开始…</div>';
+        return;
+      }
+      feed.innerHTML = '';
+      [...finished].reverse().forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'live-item';
+        const scoreText = item.itemScore != null ? item.itemScore.toFixed(1) : item.status;
+        const scoreCls = item.itemScore != null && item.itemScore <= 2 ? 'score-bad' : 'score-good';
+        div.innerHTML = `
+          <div class="live-item-head">
+            <div><strong>第 ${item.itemIndex} 题</strong> ${escapeHtml(item.title)}
+              <span class="status-tag status-${item.status}">${item.status}</span></div>
+            <div class="${scoreCls}">${scoreText}</div>
+          </div>
+          <div class="block-label">题目</div>
+          <pre>${escapeHtml(item.prompt)}</pre>
+          <div class="block-label">模型回答</div>
+          <pre>${escapeHtml(item.modelAnswer || '(无回答)')}</pre>
+          ${item.judgeSummary ? `<div class="block-label">裁判评语</div><pre>${escapeHtml(item.judgeSummary)}</pre>` : ''}
+        `;
+        feed.appendChild(div);
+      });
+      if (finished.length > lastRenderedItemCount) {
+        feed.scrollTop = 0;
+        lastRenderedItemCount = finished.length;
+      }
+    }
+
+    function showRunLiveUi(show) {
+      document.getElementById('runProgress').style.display = show ? 'block' : 'none';
+      document.getElementById('runLivePanel').style.display = show ? 'block' : 'none';
+    }
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+        ...opts
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      if (res.status === 204) return null;
+      return res.json();
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === `panel-${name}`));
+    }
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    async function loadModel() {
+      try {
+        const model = await api('/api/eval/model');
+        document.getElementById('modelInfo').textContent = `被测模型 · ${model}`;
+      } catch {
+        document.getElementById('modelInfo').textContent = '模型信息不可用';
+      }
+    }
+
+    async function refreshSuites() {
+      suites = await api('/api/eval/suites');
+      const list = document.getElementById('suiteList');
+      const select = document.getElementById('runSuiteSelect');
+      list.innerHTML = '';
+      select.innerHTML = '';
+      suites.forEach(s => {
+        const li = document.createElement('li');
+        li.textContent = `${s.name}（${s.questionCount} 题）`;
+        li.classList.toggle('selected', s.id === selectedSuiteId);
+        li.onclick = () => selectSuite(s.id);
+        list.appendChild(li);
+
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `${s.name}（${s.questionCount} 题）`;
+        select.appendChild(opt);
+      });
+      if (!selectedSuiteId && suites.length) selectSuite(suites[0].id);
+      else if (selectedSuiteId) selectSuite(selectedSuiteId);
+    }
+
+    async function selectSuite(id) {
+      selectedSuiteId = id;
+      selectedQuestionId = null;
+      document.getElementById('suiteHint').textContent = `当前题库 ID: ${id}`;
+      document.querySelectorAll('#suiteList li').forEach((li, i) => {
+        li.classList.toggle('selected', suites[i]?.id === id);
+      });
+      document.getElementById('runSuiteSelect').value = id;
+      await refreshQuestions();
+      clearQuestionForm();
+    }
+
+    async function refreshQuestions() {
+      const list = document.getElementById('questionList');
+      list.innerHTML = '';
+      if (!selectedSuiteId) return;
+      const questions = await api(`/api/eval/suites/${selectedSuiteId}/questions`);
+      questions.forEach(q => {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${q.sortOrder}. ${q.title}</strong>
+          <span class="muted"> · ${CATEGORY_LABELS[q.category] || q.category}</span>`;
+        li.classList.toggle('selected', q.id === selectedQuestionId);
+        li.onclick = () => loadQuestion(q);
+        list.appendChild(li);
+      });
+    }
+
+    function clearQuestionForm() {
+      selectedQuestionId = null;
+      document.getElementById('qTitle').value = '';
+      document.getElementById('qPrompt').value = '';
+      document.getElementById('qReference').value = '';
+      document.getElementById('qOutputFormat').value = '';
+      document.getElementById('qCategory').value = 'CODE';
+    }
+
+    function loadQuestion(q) {
+      selectedQuestionId = q.id;
+      document.getElementById('qTitle').value = q.title;
+      document.getElementById('qPrompt').value = q.prompt;
+      document.getElementById('qReference').value = q.referenceAnswer || '';
+      document.getElementById('qOutputFormat').value = q.outputFormat || '';
+      document.getElementById('qCategory').value = q.category;
+      refreshQuestions();
+    }
+
+    document.getElementById('importDefaultBtn').onclick = async () => {
+      const s = await api('/api/eval/suites/import-default', { method: 'POST' });
+      selectedSuiteId = s.id;
+      await refreshSuites();
+      alert(`已导入「${s.name}」，共 ${s.questionCount} 题`);
+    };
+
+    document.getElementById('newSuiteBtn').onclick = async () => {
+      const name = prompt('题库名称');
+      if (!name) return;
+      const s = await api('/api/eval/suites', { method: 'POST', body: JSON.stringify({ name }) });
+      selectedSuiteId = s.id;
+      await refreshSuites();
+    };
+
+    document.getElementById('deleteSuiteBtn').onclick = async () => {
+      if (!selectedSuiteId || !confirm('确定删除该题库及全部题目？')) return;
+      await api(`/api/eval/suites/${selectedSuiteId}`, { method: 'DELETE' });
+      selectedSuiteId = null;
+      await refreshSuites();
+    };
+
+    document.getElementById('newQuestionBtn').onclick = () => clearQuestionForm();
+
+    document.getElementById('saveQuestionBtn').onclick = async () => {
+      if (!selectedSuiteId) return alert('请先选择题库');
+      const body = {
+        title: document.getElementById('qTitle').value.trim(),
+        prompt: document.getElementById('qPrompt').value.trim(),
+        category: document.getElementById('qCategory').value,
+        referenceAnswer: document.getElementById('qReference').value.trim() || null,
+        outputFormat: document.getElementById('qOutputFormat').value.trim() || null
+      };
+      if (!body.title || !body.prompt) return alert('标题和题干必填');
+      if (selectedQuestionId) {
+        await api(`/api/eval/questions/${selectedQuestionId}`, { method: 'PUT', body: JSON.stringify(body) });
+      } else {
+        const q = await api(`/api/eval/suites/${selectedSuiteId}/questions`, { method: 'POST', body: JSON.stringify(body) });
+        selectedQuestionId = q.id;
+      }
+      await refreshSuites();
+      await refreshQuestions();
+    };
+
+    document.getElementById('deleteQuestionBtn').onclick = async () => {
+      if (!selectedQuestionId || !confirm('删除该题目？')) return;
+      await api(`/api/eval/questions/${selectedQuestionId}`, { method: 'DELETE' });
+      clearQuestionForm();
+      await refreshSuites();
+      await refreshQuestions();
+    };
+
+    document.getElementById('startRunBtn').onclick = async () => {
+      const suiteId = Number(document.getElementById('runSuiteSelect').value);
+      if (!suiteId) return alert('请选择题库');
+      const run = await api('/api/eval/runs', {
+        method: 'POST',
+        body: JSON.stringify({
+          suiteId,
+          notes: document.getElementById('runNotes').value.trim() || null
+        })
+      });
+      currentRunId = run.runId;
+      lastRenderedItemCount = 0;
+      document.getElementById('cancelRunBtn').disabled = false;
+      showRunLiveUi(true);
+      document.getElementById('liveFeed').innerHTML = '<div class="live-empty">评测已启动…</div>';
+      startPolling();
+    };
+
+    document.getElementById('cancelRunBtn').onclick = async () => {
+      if (!currentRunId) return;
+      await api(`/api/eval/runs/${currentRunId}/cancel`, { method: 'POST' });
+      stopPolling();
+    };
+
+    function startPolling() {
+      stopPolling();
+      pollTimer = setInterval(pollRun, 2000);
+      pollRun();
+    }
+
+    function stopPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+      document.getElementById('cancelRunBtn').disabled = true;
+    }
+
+    async function pollRun() {
+      if (!currentRunId) return;
+      try {
+        const report = await api(`/api/eval/runs/${currentRunId}/report`);
+        const run = report.run;
+        const pct = run.totalQuestions ? Math.round(run.completedQuestions / run.totalQuestions * 100) : 0;
+        const liveScore = computeLiveScore(run, report.items);
+        const active = report.items.find(i => i.status === 'ANSWERING' || i.status === 'SCORING');
+        const activeHint = active ? ` · 第 ${active.itemIndex} 题 ${phaseLabel(active.status)}` : '';
+        document.getElementById('runProgressText').textContent =
+          `${run.status} · ${run.completedQuestions}/${run.totalQuestions} · 均分 ${liveScore != null ? liveScore.toFixed(1) : '-'}${activeHint}`;
+        document.getElementById('runProgressBar').style.width = pct + '%';
+        document.getElementById('statusBadge').textContent = run.status;
+        renderLivePanel(report);
+        if (currentReport?.run?.runId === run.runId) {
+          renderReportSummary(report);
+        }
+        if (run.status === 'COMPLETED' || run.status === 'FAILED' || run.status === 'CANCELLED') {
+          stopPolling();
+          showRunLiveUi(false);
+          await showReport(currentRunId);
+          await refreshHistory();
+          switchTab('report');
+        }
+      } catch (e) {
+        document.getElementById('runProgressText').textContent = '连接中断，重试中…';
+      }
+    }
+
+    async function resumeRunningEvalIfAny() {
+      const runs = await api('/api/eval/runs');
+      const running = runs.find(r => r.status === 'RUNNING' || r.status === 'PENDING');
+      if (!running) return;
+      currentRunId = running.runId;
+      lastRenderedItemCount = 0;
+      document.getElementById('cancelRunBtn').disabled = false;
+      showRunLiveUi(true);
+      switchTab('run');
+      startPolling();
+    }
+
+    async function refreshHistory() {
+      const runs = await api('/api/eval/runs');
+      const list = document.getElementById('historyList');
+      list.innerHTML = '';
+      runs.forEach(r => {
+        const li = document.createElement('li');
+        const score = r.totalScore != null ? r.totalScore.toFixed(1) : '-';
+        li.innerHTML = `<div><strong>${r.suiteName}</strong>
+          <span class="status-tag status-${r.status}">${r.status}</span></div>
+          <div class="muted mono">${r.createdAt} · ${r.modelName} · 得分 ${score}/5 · ${r.completedQuestions}/${r.totalQuestions}</div>`;
+        li.onclick = () => showReport(r.runId);
+        list.appendChild(li);
+      });
+    }
+
+    async function showReport(runId) {
+      currentRunId = runId;
+      const report = await api(`/api/eval/runs/${runId}/report`);
+      currentReport = report;
+      document.getElementById('reportEmpty').style.display = 'none';
+      document.getElementById('reportContent').style.display = 'block';
+      const run = report.run;
+      renderReportSummary(report);
+
+      const container = document.getElementById('itemCards');
+      container.innerHTML = '';
+      report.items.forEach(item => renderItemCard(container, item, run.status === 'COMPLETED'));
+      switchTab('report');
+    }
+
+    function renderReportSummary(report) {
+      const run = report.run;
+      document.getElementById('reportTitle').textContent =
+        `${run.suiteName} · ${run.modelName}`;
+      const liveScore = computeLiveScore(run, report.items);
+      document.getElementById('reportTotal').textContent =
+        liveScore != null ? `${liveScore.toFixed(1)} / 5.0` : '暂无评分';
+      document.getElementById('reportMeta').textContent =
+        `${run.createdAt} · ${run.completedQuestions}/${run.totalQuestions} 题 · ${run.status}`;
+      const reportError = document.getElementById('reportError');
+      if (run.errorMessage) {
+        reportError.style.display = 'block';
+        reportError.textContent = run.errorMessage;
+      } else {
+        reportError.style.display = 'none';
+        reportError.textContent = '';
+      }
+
+      const dims = run.dimensionScores || {};
+      const bars = document.getElementById('dimBars');
+      bars.innerHTML = '';
+      Object.entries(DIM_LABELS).forEach(([key, label]) => {
+        const val = dims[key];
+        const pct = val != null ? val / 5 * 100 : 0;
+        const row = document.createElement('div');
+        row.className = 'dim-row';
+        row.innerHTML = `<span>${label}</span>
+          <div class="dim-bar"><div class="dim-fill" style="width:${pct}%"></div></div>
+          <span>${val != null ? val.toFixed(1) : '-'}</span>`;
+        bars.appendChild(row);
+      });
+
+    }
+
+    function renderItemCard(container, item, editable) {
+      const card = document.createElement('div');
+      card.className = 'item-card';
+      const scoreClass = item.itemScore != null && item.itemScore <= 2 ? 'score-bad' : 'score-good';
+      card.innerHTML = `
+        <div class="item-head">
+          <div><strong>第 ${item.itemIndex} 题</strong> ${item.title}
+            <span class="muted">· ${CATEGORY_LABELS[item.category] || item.category}</span>
+            ${item.manuallyEdited ? '<span class="muted">· 已人工改分</span>' : ''}
+          </div>
+          <div class="${scoreClass}">${item.itemScore != null ? item.itemScore.toFixed(1) : item.status}</div>
+        </div>
+        <div class="item-body"></div>`;
+      const body = card.querySelector('.item-body');
+      body.innerHTML = `
+        <div class="item-block"><label>题目</label><pre>${escapeHtml(item.prompt)}</pre></div>
+        <div class="item-block"><label>模型回答</label><pre>${escapeHtml(item.modelAnswer || '(暂无)')}</pre></div>
+        <div class="item-block"><label>裁判评语</label><pre>${escapeHtml(item.judgeSummary || '-')}</pre></div>
+        ${item.errorMessage ? `<div class="item-block"><label>失败原因</label><pre class="score-bad">${escapeHtml(item.errorMessage)}</pre></div>` : ''}
+        <div class="score-grid" id="scores-${item.id}"></div>
+        ${editable ? `<button style="margin-top:0.5rem" data-save="${item.id}">保存人工改分</button>` : ''}`;
+      const grid = body.querySelector(`#scores-${item.id}`);
+      ['understanding','reasoning','code','domain','stability','instruction'].forEach(key => {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `<label>${DIM_LABELS[key]}</label>
+          <input type="number" min="0" max="5" data-key="${key}" value="${item[key] ?? ''}" ${editable ? '' : 'disabled'}>`;
+        grid.appendChild(wrap);
+      });
+      if (editable) {
+        body.querySelector(`[data-save="${item.id}"]`).onclick = async (e) => {
+          e.stopPropagation();
+          const inputs = body.querySelectorAll('input[data-key]');
+          const bodyObj = {};
+          inputs.forEach(inp => {
+            const v = inp.value.trim();
+            if (v !== '') bodyObj[inp.dataset.key] = Number(v);
+          });
+          await api(`/api/eval/items/${item.id}/scores`, { method: 'PUT', body: JSON.stringify(bodyObj) });
+          await showReport(currentRunId);
+        };
+      }
+      card.querySelector('.item-head').onclick = () => card.classList.toggle('open');
+      container.appendChild(card);
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    document.getElementById('continueRunBtn').onclick = async () => {
+      if (!currentRunId) return;
+      const name = prompt('新题库名称（可留空自动命名）', '');
+      const result = await api(`/api/eval/runs/${currentRunId}/continue`, {
+        method: 'POST',
+        body: JSON.stringify({ newSuiteName: name || null })
+      });
+      selectedSuiteId = result.suiteId;
+      await refreshSuites();
+      switchTab('suites');
+      alert(`已复制 ${result.questionCount} 题到新题库「${result.suiteName}」，可编辑后再次评测。`);
+    };
+
+    await loadModel();
+    await refreshSuites();
+    await refreshHistory();
+    await resumeRunningEvalIfAny();
+  </script>
+</body>
+</html>

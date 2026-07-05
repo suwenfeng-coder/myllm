@@ -1,0 +1,30 @@
+spring:
+  http:
+    client:
+      # 远程 Ollama 冷加载 8B 模型通常超过数秒，避免加载完成前客户端提前超时。
+      # Windows 远程 Ollama 经虚拟组网首次建连和冷启动可能耗时较长。
+      connect-timeout: ${OLLAMA_CONNECT_TIMEOUT:180s}
+      read-timeout: ${OLLAMA_READ_TIMEOUT:180s}
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  ai:
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://100.125.178.35:11434}
+      chat:
+        options:
+          model: mymodel-base
+          temperature: 0.7
+          keep-alive: ${OLLAMA_CHAT_KEEP_ALIVE:30m}
+      embedding:
+        options:
+          model: bge-m3
+
+llm:
+  provider: ollama

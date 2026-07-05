@@ -1,0 +1,12 @@
+# Local configuration may contain database credentials.
+src/main/resources/application-local.yml
+scripts/secrets.local.sh
+
+# Maven build output.
+target/
+
+# Local OS/editor/runtime files.
+.DS_Store
+.idea/
+.cursor/
+.runtime/

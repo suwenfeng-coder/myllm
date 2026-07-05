@@ -1,0 +1,237 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: myllm
+  config:
+    import: optional:classpath:application-local.yml
+  profiles:
+    active: ollama
+    include: datasource
+  servlet:
+    multipart:
+      # 需不小于 docforge.async-max-size-mb（当前 50MB）
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:60MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:60MB}
+  neo4j:
+    uri: ${NEO4J_URI:bolt://127.0.0.1:7687}
+    connection-timeout: 5s
+    max-transaction-retry-time: 5s
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:}
+    pool:
+      max-connection-pool-size: 20
+      connection-acquisition-timeout: 5s
+      max-connection-lifetime: 30m
+      idle-time-before-connection-test: 30s
+
+# 可选值: ollama | openai-compatible
+llm:
+  provider: ollama
+
+logging:
+  level:
+    com.example.myllm: INFO
+    org.springframework.ai.ollama: DEBUG
+
+vector:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5434/myllm
+    username: pgvector
+    password: pgvector
+    driver-class-name: org.postgresql.Driver
+  table-name: file_embeddings
+  chunk-size: 1000
+  search-top-k: 5
+  index:
+    hnsw-enabled: true
+    hnsw-m: 16
+    hnsw-ef-construction: 64
+
+rag:
+  query-rewrite:
+    enabled: true
+    skip-rag-on-chitchat: true
+  retrieval:
+    # 启用 Dense + BM25；pg_search 或索引不可用时自动回退为纯向量并写入降级原因
+    hybrid-enabled: true
+    # 低于此相似度的分片视为未命中，回退为普通对话（不强行引用知识库）
+    min-similarity: 0.45
+    # Dense 和 BM25 两路粗召回规模，代码会保证 candidate >= final
+    candidate-top-k: 30
+    bm25-top-k: 30
+    # RRF 平滑常数；融合只使用排名，避免直接混合不同量纲的原始分数
+    rrf-k: 60
+    bm25-index-name: file_embeddings_bm25_idx
+    final-top-k: 5
+    filename-boost: 0.12
+    # 内容问答允许同一文档贡献多个相关分片；纯文件定位仍限制为 1 个
+    max-chunks-per-file: 2
+    filename-lookup-max-chunks: 1
+    # 明确指定文件时，降低纯向量门槛，但仍要求基本语义相关，避免仅靠文件名强行命中
+    filename-min-similarity: 0.20
+  embedding:
+    model-version: bge-m3-v1
+    expected-dimension: 1024
+    validate-dimension-on-startup: true
+    batch-size: 32
+  cleaning:
+    version: conservative-v2
+    quality:
+      min-cleaned-chars: 50
+      max-removal-ratio: 0.70
+  chunking:
+    strategy-version: structural-token-v1
+    # fixed | recursive | document | semantic | smart
+    default-strategy: fixed
+    use-token-limits: true
+    target-tokens: 450
+    max-tokens: 600
+    min-tokens: 80
+    overlap-tokens: 75
+    fixed-size: 1000
+    min-size: 200
+    max-size: 1200
+    overlap: 120
+    document:
+      max-size: 1400
+    semantic:
+      unit-min-size: 180
+      max-size: 1600
+      embedding-batch-size: 32
+      breakpoint-percentile: 25
+    smart:
+      semantic-min-document-size: 2400
+
+document:
+  parsing:
+    # auto: PDF 优先 maker→docling；本地支持格式优先 local；其他复杂格式使用 docling
+    default-mode: auto
+    # 大于该体积（MB）的 PDF 在 auto 模式下优先 docling，避免 Maker 超长耗时
+    auto-prefer-docling-above-mb: 3
+
+# Neo4j 是 pgvector/BM25 的可选派生图索引；默认关闭，避免未配置密码时影响主链路。
+graph:
+  enabled: ${GRAPH_ENABLED:false}
+  database: ${NEO4J_DATABASE:neo4j}
+  health-check-on-startup: true
+  fail-fast: false
+  indexing:
+    enabled: ${GRAPH_INDEXING_ENABLED:false}
+    schema-initialization-enabled: true
+    schema-await-seconds: 60
+    batch-size: 200
+    task-poll-interval-ms: 5000
+    max-attempts: 5
+    retry-initial-delay-ms: 5000
+    retry-max-delay-ms: 300000
+    running-timeout-ms: 600000
+    extraction-version: structure-v1
+    entity-extraction-enabled: false
+    entity-extraction-version: entity-v1
+    entity-extraction-batch-size: 3
+    entity-extraction-max-chunks: 500
+    min-confidence: 0.75
+  retrieval:
+    # 结构图稳定并完成 Shadow 评测前，不参与在线 RAG 排序。
+    enabled: ${GRAPH_RETRIEVAL_ENABLED:false}
+    shadow-mode: true
+    seed-top-k: 10
+    candidate-top-k: 30
+    max-hops: 2
+    timeout-ms: 3000
+    min-score: 0.20
+    rrf-weight: 0.80
+    fulltext-index-name: entity_name_fulltext
+
+docforge:
+  enabled: true
+  base-url: http://localhost:8000
+  api-key:
+  output-format: markdown
+  sync-max-size-mb: 5
+  async-max-size-mb: 50
+  connect-timeout-ms: 5000
+  read-timeout-ms: 600000
+  async-poll-interval-ms: 3000
+  async-poll-max-wait-ms: 3600000
+  health-check-on-startup: true
+
+upload:
+  task:
+    enabled: true
+    temp-dir: .runtime/uploads
+    poll-interval-ms: 2000
+    running-timeout-ms: 7200000
+    pending-timeout-ms: 3600000
+    retention-hours: 72
+    cleanup-interval-ms: 3600000
+    async-threshold-bytes: 1048576
+
+minio:
+  enabled: true
+  endpoint: http://127.0.0.1:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket: myllm
+  uploads-prefix: uploads
+  parsed-prefix: parsed
+  ensure-bucket-on-startup: true
+
+# Harness 控制平面（默认关闭；详见 HarnessEngineering改造方案.md）
+harness:
+  enabled: false
+  worker:
+    poll-interval-ms: 1000
+    lease-duration-ms: 30000
+    heartbeat-interval-ms: 10000
+    max-concurrency: 2
+  defaults:
+    max-steps: 8
+    max-model-calls: 6
+    max-tool-calls: 10
+    max-wall-time-ms: 120000
+    max-input-tokens: 30000
+    max-output-tokens: 6000
+  policy:
+    sensitive-read-tools-enabled: false
+    write-tools-enabled: false
+    destructive-tools-enabled: false
+    external-tools-enabled: false
+  tools:
+    default-timeout-ms: 30000
+    max-result-bytes: 65536
+    default-allowlist:
+      - knowledge.search
+      - file.list
+      - file.task-status
+      - graph.status
+  model:
+    gateway: spring-ai
+    fixture-input-tokens: 100
+    fixture-output-tokens: 50
+  context:
+    max-prompt-tokens: 12000
+    max-observation-tokens: 6000
+    max-single-observation-tokens: 2000
+    max-observations: 12
+  verification:
+    max-repair-attempts: 2
+    max-answer-chars: 12000
+    require-citations-when-evidence-present: true
+
+# 本地模型聪明度评测
+eval:
+  enabled: true
+  judge:
+    answer-system-prompt: "你是技术面试考生，请认真、完整作答。若不确定请明确说明，不要编造。"
+    answer-max-tokens: 800
+    judge-system-prompt: "你是严格的技术评测裁判。只输出 JSON，不要输出其他文字。"
+    judge-max-tokens: 200
+    judge-temperature: 0.1
+  task:
+    poll-interval-ms: 2000
+    running-timeout-ms: 7200000
+    item-timeout-ms: 180000

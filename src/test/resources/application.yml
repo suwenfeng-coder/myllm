@@ -1,0 +1,56 @@
+spring:
+  profiles:
+    active: ollama
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.autoconfigure.openai.OpenAiAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: qwen3:8b
+    openai:
+      api-key: test-disabled
+      base-url: http://localhost:1234
+  datasource:
+    url: jdbc:h2:mem:myllm;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+
+minio:
+  enabled: false
+
+llm:
+  provider: ollama
+
+rag:
+  embedding:
+    validate-dimension-on-startup: false
+
+graph:
+  enabled: false
+
+harness:
+  enabled: false
+
+vector:
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/myllm
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  table-name: file_embeddings
+  chunk-size: 1000
+  search-top-k: 3

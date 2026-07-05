@@ -1,0 +1,2 @@
+-- 模型评测表（生产环境可手动执行；开发环境 ddl-auto=update 会自动建表）
+-- model_eval_suite, model_eval_question, model_eval_run, model_eval_item

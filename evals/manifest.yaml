@@ -1,0 +1,16 @@
+version: 1
+description: myllm RAG 检索离线评测集（H8 接入 CI 前为样例基线）
+
+datasets:
+  - id: auto-manual-v1
+    path: rag-retrieval.jsonl
+    type: retrieval
+    tags: [hybrid, filename_lookup, cross_doc_noise]
+    notes: |
+      汽车用户手册 vs 贷记卡文档交叉噪声场景。
+      运行前将 gold_file_ids / negative_file_ids 替换为环境中真实 file_id。
+    thresholds:
+      recall_at_5: 0.85
+      recall_at_10: 0.90
+      wrong_file_rate_at_5: 0.05
+      mrr: 0.70

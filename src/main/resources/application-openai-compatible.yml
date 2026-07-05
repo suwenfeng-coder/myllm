@@ -1,0 +1,18 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.autoconfigure.ollama.OllamaAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaApiAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaChatAutoConfiguration
+      - org.springframework.ai.model.ollama.autoconfigure.OllamaEmbeddingAutoConfiguration
+  ai:
+    openai:
+      base-url: http://localhost:1234
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        options:
+          model: local-model
+          temperature: 0.7
+
+llm:
+  provider: openai-compatible
