@@ -18,6 +18,13 @@ public class FinalAnswerValidator {
         this.properties = properties;
     }
 
+    /**
+     * 校验模型最终答案是否满足可投递条件。
+     *
+     * <p>这里做的是机械校验，不判断答案语义是否“聪明”：只检查答案非空、长度上限、引用是否存在、
+     * 引用是否来自本轮真实命中的 sourceId、以及是否重复引用。这样即使模型尝试编造 citation，也会被
+     * Repair 流程拦截。</p>
+     */
     public ValidationResult validate(HarnessAction.Final answer, Set<String> allowedSourceIds) {
         List<String> issues = new ArrayList<>();
         Set<String> allowed = allowedSourceIds == null ? Set.of() : Set.copyOf(allowedSourceIds);

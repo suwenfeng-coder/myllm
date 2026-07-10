@@ -33,20 +33,25 @@ class ToolPolicyEngineTests {
 
     @Test
     void blocksPermanentlyDeniedTool() {
+        String toolName = "shell.execute";
+        ToolDescriptor descriptor = sampleDescriptor(toolName);
+        ToolExecutionContext context = contextWithAllowAll();
+
         HarnessDomainException ex = assertThrows(
                 HarnessDomainException.class,
-                () -> engine.validate("shell.execute", sampleDescriptor("shell.execute"), contextWithAllowAll()));
+                () -> engine.validate(toolName, descriptor, context));
         assertEquals(HarnessErrorCode.TOOL_NOT_ALLOWED, ex.getErrorCode());
     }
 
     @Test
     void blocksToolOutsideAllowlist() {
+        String toolName = "unknown.tool";
+        ToolDescriptor descriptor = sampleDescriptor(toolName);
+        ToolExecutionContext context = new ToolExecutionContext(null, null, null, Set.of());
+
         HarnessDomainException ex = assertThrows(
                 HarnessDomainException.class,
-                () -> engine.validate(
-                        "unknown.tool",
-                        sampleDescriptor("unknown.tool"),
-                        new ToolExecutionContext(null, null, null, Set.of())));
+                () -> engine.validate(toolName, descriptor, context));
         assertEquals(HarnessErrorCode.TOOL_NOT_ALLOWED, ex.getErrorCode());
     }
 
@@ -54,12 +59,11 @@ class ToolPolicyEngineTests {
     void blocksWriteToolByDefault() {
         ToolDescriptor writeTool = new ToolDescriptor(
                 "upload.retry", "1", "write", ToolRisk.WRITE, 1000, false, false, 1024);
+        ToolExecutionContext context = new ToolExecutionContext(null, null, null, Set.of("upload.retry"));
+
         HarnessDomainException ex = assertThrows(
                 HarnessDomainException.class,
-                () -> engine.validate(
-                        "upload.retry",
-                        writeTool,
-                        new ToolExecutionContext(null, null, null, Set.of("upload.retry"))));
+                () -> engine.validate("upload.retry", writeTool, context));
         assertEquals(HarnessErrorCode.TOOL_NOT_ALLOWED, ex.getErrorCode());
         assertTrue(ex.getMessage().contains("WRITE"));
     }

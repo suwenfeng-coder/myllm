@@ -1,6 +1,8 @@
 package com.example.myllm.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import java.util.List;
@@ -34,5 +36,26 @@ class ChatServiceTests {
 
         assertEquals("连接正常", service.simpleChat("测试"));
         assertEquals(1, calls.get());
+    }
+
+    @Test
+    void simpleChatFailsClearlyWhenModelReturnsNullResponse() {
+        ChatModel model = prompt -> null;
+        ChatService service = new ChatService(
+                ChatClient.builder(model).build(),
+                mock(TransactionLogService.class),
+                mock(RagCallLogService.class),
+                mock(FileEmbeddingService.class),
+                mock(RagRetrievalService.class),
+                "ollama",
+                "mymodel-base",
+                "unused",
+                0.45);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> service.simpleChat("测试"));
+
+        assertTrue(ex.getMessage().contains("模型返回空响应"));
     }
 }

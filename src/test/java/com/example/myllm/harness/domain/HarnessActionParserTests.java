@@ -1,6 +1,7 @@
 package com.example.myllm.harness.domain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -58,13 +59,13 @@ class HarnessActionParserTests {
     @Test
     void rejectsUnknownAction() {
         HarnessActionParser.ParseResult result = parser.parse("{\"action\":\"DELETE_ALL\"}");
-        assertTrue(!result.success());
+        assertFalse(result.success());
         assertTrue(result.errorMessage().contains("未知 action"));
     }
 
     @Test
     void rejectsInvalidJson() {
         HarnessActionParser.ParseResult result = parser.parse("not-json");
-        assertTrue(!result.success());
+        assertFalse(result.success());
     }
 }

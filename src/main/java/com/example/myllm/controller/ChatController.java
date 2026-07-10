@@ -30,18 +30,23 @@ public class ChatController {
 
     @GetMapping("/health")
     public String health() {
-        log.debug("健康检查 provider={} model={}", provider, chatService.getModelInfo());
-        return "ok - provider: " + provider + ", model: " + chatService.getModelInfo();
+        String modelInfo = chatService.getModelInfo();
+        if (log.isDebugEnabled()) {
+            log.debug("健康检查 provider={} model={}", provider, modelInfo);
+        }
+        return "ok - provider: " + provider + ", model: " + modelInfo;
     }
 
     @PostMapping
     public ChatResponse chat(@Valid @RequestBody ChatRequest request) {
         boolean useRag = request.useRagEnabled();
-        log.info("收到对话请求 POST /api/chat messageLen={} hasSystemPrompt={} chatMode={} useRag={}",
-                request.message().length(),
-                request.systemPrompt() != null && !request.systemPrompt().isBlank(),
-                request.resolvedChatMode(),
-                useRag);
+        if (log.isInfoEnabled()) {
+            log.info("收到对话请求 POST /api/chat messageLen={} hasSystemPrompt={} chatMode={} useRag={}",
+                    request.message().length(),
+                    request.systemPrompt() != null && !request.systemPrompt().isBlank(),
+                    request.resolvedChatMode(),
+                    useRag);
+        }
         return chatService.chat(
                 request.message(),
                 request.systemPrompt(),

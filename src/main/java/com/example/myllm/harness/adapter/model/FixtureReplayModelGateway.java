@@ -3,7 +3,7 @@ package com.example.myllm.harness.adapter.model;
 import com.example.myllm.harness.domain.HarnessActionParser;
 import com.example.myllm.harness.port.ModelGateway;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 确定性 Fixture 回放网关，按序返回预置 JSON 响应。
@@ -13,10 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class FixtureReplayModelGateway implements ModelGateway {
 
     private final HarnessActionParser actionParser;
-    private volatile List<String> scriptedResponses;
     private final int inputTokensPerCall;
     private final int outputTokensPerCall;
-    private final AtomicInteger cursor = new AtomicInteger(0);
+    private final AtomicReference<ReplayState> state;
 
     public FixtureReplayModelGateway(
             HarnessActionParser actionParser,
@@ -24,18 +23,18 @@ public class FixtureReplayModelGateway implements ModelGateway {
             int inputTokensPerCall,
             int outputTokensPerCall) {
         this.actionParser = actionParser;
-        this.scriptedResponses = scriptedResponses == null ? List.of() : List.copyOf(scriptedResponses);
+        this.state = new AtomicReference<>(new ReplayState(copyResponses(scriptedResponses), 0));
         this.inputTokensPerCall = Math.max(0, inputTokensPerCall);
         this.outputTokensPerCall = Math.max(0, outputTokensPerCall);
     }
 
     @Override
     public ModelResponse complete(ModelRequest request) {
-        int index = cursor.getAndIncrement();
-        if (index >= scriptedResponses.size()) {
-            return ModelResponse.failed("Fixture 回放已耗尽，索引=" + index);
+        ScriptedResponse scripted = nextResponse();
+        if (scripted.exhausted()) {
+            return ModelResponse.failed("Fixture 回放已耗尽，索引=" + scripted.index());
         }
-        String raw = scriptedResponses.get(index);
+        String raw = scripted.raw();
         HarnessActionParser.ParseResult parsed = actionParser.parse(raw);
         if (!parsed.success()) {
             return ModelResponse.failed(parsed.errorMessage());
@@ -44,16 +43,45 @@ public class FixtureReplayModelGateway implements ModelGateway {
     }
 
     public int cursor() {
-        return cursor.get();
+        return state.get().cursor();
     }
 
     public void reset() {
-        cursor.set(0);
+        state.updateAndGet(current -> new ReplayState(current.responses(), 0));
     }
 
     /** 替换脚本并归零游标，供不同 Replay 场景隔离使用。 */
     public void reset(List<String> responses) {
-        scriptedResponses = responses == null ? List.of() : List.copyOf(responses);
-        cursor.set(0);
+        state.set(new ReplayState(copyResponses(responses), 0));
+    }
+
+    private ScriptedResponse nextResponse() {
+        while (true) {
+            ReplayState current = state.get();
+            int index = current.cursor();
+            if (index >= current.responses().size()) {
+                return ScriptedResponse.exhausted(index);
+            }
+            ReplayState next = new ReplayState(current.responses(), index + 1);
+            if (state.compareAndSet(current, next)) {
+                return ScriptedResponse.value(index, current.responses().get(index));
+            }
+        }
+    }
+
+    private static List<String> copyResponses(List<String> responses) {
+        return responses == null ? List.of() : List.copyOf(responses);
+    }
+
+    private record ReplayState(List<String> responses, int cursor) {}
+
+    private record ScriptedResponse(int index, String raw, boolean exhausted) {
+        static ScriptedResponse value(int index, String raw) {
+            return new ScriptedResponse(index, raw, false);
+        }
+
+        static ScriptedResponse exhausted(int index) {
+            return new ScriptedResponse(index, null, true);
+        }
     }
 }

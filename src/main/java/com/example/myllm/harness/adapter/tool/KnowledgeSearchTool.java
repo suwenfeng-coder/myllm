@@ -82,7 +82,10 @@ public class KnowledgeSearchTool implements HarnessTool<KnowledgeSearchInput, Kn
 
     private static KnowledgeSearchCitation toCitation(VectorChunkResult chunk) {
         String text = chunk.chunkText();
-        String snippet = text == null ? "" : (text.length() <= SNIPPET_LEN ? text : text.substring(0, SNIPPET_LEN) + "...");
+        String snippet = "";
+        if (text != null) {
+            snippet = text.length() <= SNIPPET_LEN ? text : text.substring(0, SNIPPET_LEN) + "...";
+        }
         return new KnowledgeSearchCitation(
                 chunk.fileId(),
                 chunk.fileName(),

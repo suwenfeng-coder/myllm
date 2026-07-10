@@ -1,7 +1,5 @@
 package com.example.myllm.harness.adapter.tool.model;
 
-import java.util.List;
-
 public record KnowledgeSearchCitation(
         String fileId,
         String fileName,

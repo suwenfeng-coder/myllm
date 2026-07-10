@@ -54,22 +54,33 @@ public class HarnessActionParser {
         if (answer == null || answer.isBlank()) {
             return ParseResult.failure("FINAL 缺少 answer");
         }
-        List<HarnessAction.Citation> citations = new ArrayList<>();
-        JsonNode citationsNode = root.get("citations");
-        if (citationsNode != null && citationsNode.isArray()) {
-            for (JsonNode item : citationsNode) {
-                String sourceId = textOrNull(item, "sourceId");
-                if (sourceId == null) {
-                    sourceId = textOrNull(item, "source_id");
-                }
-                String excerpt = textOrNull(item, "excerpt");
-                if (sourceId != null && !sourceId.isBlank()) {
-                    citations.add(new HarnessAction.Citation(sourceId.trim(), excerpt == null ? "" : excerpt));
-                }
-            }
-        }
         String summary = textOrNull(root, "summary");
-        return ParseResult.success(new HarnessAction.Final(answer, citations, summary));
+        return ParseResult.success(new HarnessAction.Final(answer, parseCitations(root.get("citations")), summary));
+    }
+
+    private static List<HarnessAction.Citation> parseCitations(JsonNode citationsNode) {
+        if (citationsNode == null || !citationsNode.isArray()) {
+            return List.of();
+        }
+        List<HarnessAction.Citation> citations = new ArrayList<>();
+        for (JsonNode item : citationsNode) {
+            citationFrom(item).ifPresent(citations::add);
+        }
+        return List.copyOf(citations);
+    }
+
+    private static java.util.Optional<HarnessAction.Citation> citationFrom(JsonNode item) {
+        String sourceId = firstText(item, "sourceId", "source_id");
+        if (sourceId == null || sourceId.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String excerpt = textOrNull(item, "excerpt");
+        return java.util.Optional.of(new HarnessAction.Citation(sourceId.trim(), excerpt == null ? "" : excerpt));
+    }
+
+    private static String firstText(JsonNode node, String firstField, String secondField) {
+        String first = textOrNull(node, firstField);
+        return first == null ? textOrNull(node, secondField) : first;
     }
 
     private static Map<String, Object> readArguments(JsonNode node) {

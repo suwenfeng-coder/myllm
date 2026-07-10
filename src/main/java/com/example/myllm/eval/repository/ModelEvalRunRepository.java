@@ -1,6 +1,5 @@
 package com.example.myllm.eval.repository;
 
-import com.example.myllm.eval.entity.EvalRunStatus;
 import com.example.myllm.eval.entity.ModelEvalRun;
 import java.time.LocalDateTime;
 import java.util.List;

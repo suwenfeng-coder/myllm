@@ -28,6 +28,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 文档解析路由服务，统一本地解析和 DocForge 远程解析的业务入口。
+ *
+ * <p>支持显式模式 {@code local/docling/maker} 和自动模式 {@code auto}。自动模式会根据文件类型、大小和
+ * 引擎能力选择候选链，并记录实际执行模式、尝试链和降级原因，供入库审计、前端展示和问题排查使用。</p>
+ *
+ * <p>本类只负责“选择谁来解析”和“补齐解析元数据”；具体格式解析能力由 {@link LocalDocumentParser} 和
+ * DocForge 适配器提供。</p>
+ */
 @Service
 public class DocumentParseService {
 
@@ -65,6 +74,12 @@ public class DocumentParseService {
         return parse(file, parseMode, ParseProgressListener.disabled());
     }
 
+    /**
+     * 解析上传文件并返回带审计元数据的结构化文档。
+     *
+     * <p>显式模式失败会直接抛出，避免用户以为指定引擎已成功；自动模式会按候选链逐个尝试，直到一个解析器
+     * 成功或所有候选失败。</p>
+     */
     public DocumentParseResult parse(
             MultipartFile file, String parseMode, ParseProgressListener listener) {
         if (file == null || file.isEmpty()) {
@@ -79,6 +94,12 @@ public class DocumentParseService {
         return parseAutomatically(file, extension, listener);
     }
 
+    /**
+     * 汇总前端上传页需要的解析能力。
+     *
+     * <p>这里会合并本地格式白名单、DocForge 全局 formats 和新版 engines 状态。若远程服务未就绪，会返回
+     * enabled/ready/unavailableReason，让页面能禁用不适合的解析模式，而不是等上传后才失败。</p>
+     */
     @SuppressWarnings("java:S3776") // Capability negotiation intentionally handles local and remote fallbacks together.
     public ParseCapabilitiesResponse getCapabilities() {
         List<String> localExtensions = LocalDocumentParser.SUPPORTED_EXTENSIONS.stream()
@@ -181,6 +202,12 @@ public class DocumentParseService {
                 enriched, requestedMode, parser.mode(), durationMs, List.of(parser.mode()), null);
     }
 
+    /**
+     * 自动解析策略。
+     *
+     * <p>PDF 默认 Maker 优先以获得更好的版面/表格效果，但大 PDF 会优先 Docling，避免 Maker 长时间加载或
+     * 解析阻塞；本地可稳定解析的格式优先 local，远程 Docling 作为兜底。</p>
+     */
     private DocumentParseResult parseAutomatically(
             MultipartFile file, String extension, ParseProgressListener listener) {
         List<String> candidates = autoCandidates(extension, file.getSize());
@@ -252,7 +279,7 @@ public class DocumentParseService {
 
     private List<String> autoCandidates(String extension, long fileSizeBytes) {
         if ("pdf".equals(extension)) {
-            long thresholdBytes = (long) autoPreferDoclingAboveMb * 1024L * 1024L;
+            long thresholdBytes = autoPreferDoclingAboveMb * 1024L * 1024L;
             if (fileSizeBytes > thresholdBytes) {
                 return List.of(MODE_DOCLING, MODE_MAKER);
             }

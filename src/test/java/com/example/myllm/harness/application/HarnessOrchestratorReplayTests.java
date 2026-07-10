@@ -12,7 +12,6 @@ import com.example.myllm.harness.domain.StepType;
 import com.example.myllm.harness.domain.ToolRisk;
 import com.example.myllm.harness.entity.HarnessRun;
 import com.example.myllm.harness.port.HarnessTool;
-import com.example.myllm.harness.port.ModelGateway;
 import com.example.myllm.harness.port.ToolDescriptor;
 import com.example.myllm.harness.port.ToolExecutionContext;
 import com.example.myllm.harness.port.ToolRegistry;
@@ -36,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Import({
         HarnessRunService.class,
         HarnessEventService.class,
+        HarnessStepTransactionService.class,
         HarnessStepService.class,
         HarnessOrchestrator.class,
         ContextAssembler.class,

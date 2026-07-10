@@ -1,7 +1,6 @@
 package com.example.myllm.eval.service;
 
 import com.example.myllm.eval.config.EvalProperties;
-import com.example.myllm.eval.dto.EvalApiModels;
 import com.example.myllm.eval.dto.EvalApiModels.EvalDimensionScores;
 import com.example.myllm.eval.dto.EvalApiModels.EvalItemResponse;
 import com.example.myllm.eval.dto.EvalApiModels.EvalItemScoreUpdateRequest;
@@ -149,15 +148,7 @@ public class ModelEvalRunService {
     public EvalItemResponse updateItemScores(Long itemId, EvalItemScoreUpdateRequest request) {
         ModelEvalItem item = itemRepository.findById(itemId)
                 .orElseThrow(() -> new IllegalArgumentException("评测题目不存在: " + itemId));
-        EvalScoreSupport.applyManualScores(
-                item,
-                request.understanding(),
-                request.reasoning(),
-                request.code(),
-                request.domain(),
-                request.stability(),
-                request.instruction(),
-                request.judgeSummary());
+        EvalScoreSupport.applyManualScores(item, request);
         itemRepository.save(item);
         recalculateRunSummary(item.getRunId());
         return toItemResponse(item);

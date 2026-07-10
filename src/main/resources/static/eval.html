@@ -281,7 +281,7 @@
       overflow: auto;
       margin-top: 0.35rem;
     }
-    .live-item .block-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem; }
+    .block-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem; }
     .live-empty { color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0; text-align: center; }
   </style>
 </head>
@@ -317,8 +317,8 @@
         <h2>题目编辑</h2>
         <p class="muted" id="suiteHint">请选择题库</p>
         <div class="grid-2">
-          <div><label>标题</label><input id="qTitle"></div>
-          <div><label>类别</label>
+          <div><label for="qTitle">标题</label><input id="qTitle"></div>
+          <div><label for="qCategory">类别</label>
             <select id="qCategory">
               <option value="UNDERSTANDING">理解能力</option>
               <option value="REASONING">推理能力</option>
@@ -330,9 +330,9 @@
             </select>
           </div>
         </div>
-        <div style="margin-top:0.75rem"><label>题干</label><textarea id="qPrompt"></textarea></div>
-        <div style="margin-top:0.75rem"><label>参考答案要点</label><textarea id="qReference"></textarea></div>
-        <div style="margin-top:0.75rem"><label>输出格式要求</label><input id="qOutputFormat"></div>
+        <div style="margin-top:0.75rem"><label for="qPrompt">题干</label><textarea id="qPrompt"></textarea></div>
+        <div style="margin-top:0.75rem"><label for="qReference">参考答案要点</label><textarea id="qReference"></textarea></div>
+        <div style="margin-top:0.75rem"><label for="qOutputFormat">输出格式要求</label><input id="qOutputFormat"></div>
         <div class="row" style="margin-top:0.75rem">
           <button id="saveQuestionBtn">保存题目</button>
           <button class="secondary" id="newQuestionBtn">新增题目</button>
@@ -347,10 +347,10 @@
         <h2>启动评测</h2>
         <p class="muted">将逐题调用本地模型（不走 RAG），并由模型裁判六维打分。</p>
         <div style="margin-top:0.75rem">
-          <label>选择题库</label>
+          <label for="runSuiteSelect">选择题库</label>
           <select id="runSuiteSelect"></select>
         </div>
-        <div style="margin-top:0.75rem"><label>备注（可选）</label><input id="runNotes"></div>
+        <div style="margin-top:0.75rem"><label for="runNotes">备注（可选）</label><input id="runNotes"></div>
         <div class="row" style="margin-top:0.75rem">
           <button id="startRunBtn">开始评测</button>
           <button class="secondary" id="cancelRunBtn" disabled>取消</button>
@@ -425,9 +425,9 @@
     let lastRenderedItemCount = 0;
 
     function computeLiveScore(run, items) {
-      if (run.totalScore != null) return run.totalScore;
-      const scored = items.filter(i => i.itemScore != null);
-      if (!scored.length) return null;
+      if (Number.isFinite(run.totalScore)) return run.totalScore;
+      const scored = items.filter(i => Number.isFinite(i.itemScore));
+      if (scored.length === 0) return null;
       return Math.round(scored.reduce((s, i) => s + i.itemScore, 0) / scored.length * 10) / 10;
     }
 
@@ -440,13 +440,97 @@
       return status;
     }
 
+    function modelAnswerBlock(item) {
+      if (item.modelAnswer) {
+        return `<div class="block-label">模型回答</div><pre>${escapeHtml(item.modelAnswer)}</pre>`;
+      }
+      return '<p class="muted" style="margin-top:0.5rem">等待模型回答…</p>';
+    }
+
+    function judgeSummaryBlock(item) {
+      if (item.judgeSummary) {
+        return `<div class="block-label">裁判评语</div><pre>${escapeHtml(item.judgeSummary)}</pre>`;
+      }
+      return '';
+    }
+
+    function manualEditedBadge(item) {
+      if (item.manuallyEdited) {
+        return '<span class="muted">· 已人工改分</span>';
+      }
+      return '';
+    }
+
+    function itemScoreText(item) {
+      if (Number.isFinite(item.itemScore)) {
+        return item.itemScore.toFixed(1);
+      }
+      return item.status;
+    }
+
+    function itemErrorBlock(item) {
+      if (item.errorMessage) {
+        return `<div class="item-block"><div class="block-label">失败原因</div><pre class="score-bad">${escapeHtml(item.errorMessage)}</pre></div>`;
+      }
+      return '';
+    }
+
+    function saveScoreButton(item, editable) {
+      if (editable) {
+        return `<button style="margin-top:0.5rem" data-save="${item.id}">保存人工改分</button>`;
+      }
+      return '';
+    }
+
+    function formatScore(value) {
+      if (Number.isFinite(value)) {
+        return value.toFixed(1);
+      }
+      return '-';
+    }
+
+    function formatTotalScore(value) {
+      if (Number.isFinite(value)) {
+        return `${value.toFixed(1)} / 5.0`;
+      }
+      return '暂无评分';
+    }
+
+    function formatLiveTotalScore(value) {
+      if (Number.isFinite(value)) {
+        return `${value.toFixed(1)} / 5.0`;
+      }
+      return '-';
+    }
+
+    function dimensionPercent(value) {
+      if (Number.isFinite(value)) {
+        return value / 5 * 100;
+      }
+      return 0;
+    }
+
+    function scoreClassForItem(item) {
+      if (typeof item.itemScore === 'number' && item.itemScore <= 2) {
+        return 'score-bad';
+      }
+      return 'score-good';
+    }
+
+    function inputDisabledAttribute(editable) {
+      if (editable) {
+        return '';
+      }
+      return 'disabled';
+    }
+
     function renderLivePanel(report) {
       const run = report.run;
       const items = report.items;
       const liveScore = computeLiveScore(run, items);
       document.getElementById('liveTotalScore').textContent =
-        liveScore != null ? `${liveScore.toFixed(1)} / 5.0` : '-';
-      const scoredCount = items.filter(i => i.itemScore != null).length;
+        formatLiveTotalScore(liveScore);
+      const scoredCount = items.filter(i => Number.isFinite(i.itemScore)).length;
       document.getElementById('liveScoredCount').textContent =
         scoredCount ? `基于 ${scoredCount} 道已评分题目` : '尚无已评分题目';
 
@@ -461,14 +545,15 @@
 
       const dimEl = document.getElementById('liveDimScores');
       dimEl.innerHTML = '';
-      const dims = run.dimensionScores || {};
+      const dims = dimensionScoresOf(run);
       Object.entries(DIM_LABELS).forEach(([key, label]) => {
         const val = dims[key];
-        if (val == null) return;
-        const span = document.createElement('span');
-        span.className = 'live-dim';
-        span.textContent = `${label} ${val.toFixed(1)}`;
-        dimEl.appendChild(span);
+        if (Number.isFinite(val)) {
+          const span = document.createElement('span');
+          span.className = 'live-dim';
+          span.textContent = `${label} ${val.toFixed(1)}`;
+          dimEl.appendChild(span);
+        }
       });
 
       const active = items.find(i => i.status === 'ANSWERING' || i.status === 'SCORING');
@@ -481,7 +566,7 @@
           <span class="muted"> · ${CATEGORY_LABELS[active.category] || active.category}</span>
           <div class="block-label">题目</div>
           <pre>${escapeHtml(active.prompt)}</pre>
-          ${active.modelAnswer ? `<div class="block-label">模型回答</div><pre>${escapeHtml(active.modelAnswer)}</pre>` : '<p class="muted" style="margin-top:0.5rem">等待模型回答…</p>'}
+          ${modelAnswerBlock(active)}
         `;
       } else {
         currentEl.style.display = 'none';
@@ -489,33 +574,32 @@
 
       const feed = document.getElementById('liveFeed');
       const finished = items.filter(i => i.status === 'DONE' || i.status === 'FAILED');
-      if (!finished.length && !active) {
+      if (finished.length || active) {
+        feed.innerHTML = '';
+        [...finished].reverse().forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'live-item';
+          const scoreCls = scoreClassForItem(item);
+          div.innerHTML = `
+            <div class="live-item-head">
+              <div><strong>第 ${item.itemIndex} 题</strong> ${escapeHtml(item.title)}
+                <span class="status-tag status-${item.status}">${item.status}</span></div>
+              <div class="${scoreCls}">${itemScoreText(item)}</div>
+            </div>
+            <div class="block-label">题目</div>
+            <pre>${escapeHtml(item.prompt)}</pre>
+            <div class="block-label">模型回答</div>
+            <pre>${escapeHtml(item.modelAnswer || '(无回答)')}</pre>
+            ${judgeSummaryBlock(item)}
+          `;
+          feed.appendChild(div);
+        });
+        if (finished.length > lastRenderedItemCount) {
+          feed.scrollTop = 0;
+          lastRenderedItemCount = finished.length;
+        }
+      } else {
         feed.innerHTML = '<div class="live-empty">等待第一题开始…</div>';
-        return;
-      }
-      feed.innerHTML = '';
-      [...finished].reverse().forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'live-item';
-        const scoreText = item.itemScore != null ? item.itemScore.toFixed(1) : item.status;
-        const scoreCls = item.itemScore != null && item.itemScore <= 2 ? 'score-bad' : 'score-good';
-        div.innerHTML = `
-          <div class="live-item-head">
-            <div><strong>第 ${item.itemIndex} 题</strong> ${escapeHtml(item.title)}
-              <span class="status-tag status-${item.status}">${item.status}</span></div>
-            <div class="${scoreCls}">${scoreText}</div>
-          </div>
-          <div class="block-label">题目</div>
-          <pre>${escapeHtml(item.prompt)}</pre>
-          <div class="block-label">模型回答</div>
-          <pre>${escapeHtml(item.modelAnswer || '(无回答)')}</pre>
-          ${item.judgeSummary ? `<div class="block-label">裁判评语</div><pre>${escapeHtml(item.judgeSummary)}</pre>` : ''}
-        `;
-        feed.appendChild(div);
-      });
-      if (finished.length > lastRenderedItemCount) {
-        feed.scrollTop = 0;
-        lastRenderedItemCount = finished.length;
       }
     }
 
@@ -524,17 +608,26 @@
       document.getElementById('runLivePanel').style.display = show ? 'block' : 'none';
     }
 
-    async function api(path, opts = {}) {
+    function dimensionScoresOf(run) {
+      if (run.dimensionScores) {
+        return run.dimensionScores;
+      }
+      return new Map();
+    }
+
+    async function api(path, opts) {
+      const requestOptions = opts;
       const res = await fetch(path, {
-        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-        ...opts
+        ...requestOptions,
+        headers: Object.assign({ 'Content-Type': 'application/json' }, requestOptions?.headers)
       });
-      if (!res.ok) {
+      if (res.ok) {
+        if (res.status === 204) return null;
+        return res.json();
+      } else {
         const text = await res.text();
         throw new Error(text || res.statusText);
       }
-      if (res.status === 204) return null;
-      return res.json();
     }
 
     function switchTab(name) {
@@ -573,8 +666,11 @@
         opt.textContent = `${s.name}（${s.questionCount} 题）`;
         select.appendChild(opt);
       });
-      if (!selectedSuiteId && suites.length) selectSuite(suites[0].id);
-      else if (selectedSuiteId) selectSuite(selectedSuiteId);
+      if (selectedSuiteId) {
+        selectSuite(selectedSuiteId);
+      } else if (suites.length) {
+        selectSuite(suites[0].id);
+      }
     }
 
     async function selectSuite(id) {
@@ -592,16 +688,17 @@
     async function refreshQuestions() {
       const list = document.getElementById('questionList');
       list.innerHTML = '';
-      if (!selectedSuiteId) return;
-      const questions = await api(`/api/eval/suites/${selectedSuiteId}/questions`);
-      questions.forEach(q => {
-        const li = document.createElement('li');
-        li.innerHTML = `<strong>${q.sortOrder}. ${q.title}</strong>
-          <span class="muted"> · ${CATEGORY_LABELS[q.category] || q.category}</span>`;
-        li.classList.toggle('selected', q.id === selectedQuestionId);
-        li.onclick = () => loadQuestion(q);
-        list.appendChild(li);
-      });
+      if (selectedSuiteId) {
+        const questions = await api(`/api/eval/suites/${selectedSuiteId}/questions`);
+        questions.forEach(q => {
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${q.sortOrder}. ${q.title}</strong>
+            <span class="muted"> · ${CATEGORY_LABELS[q.category] || q.category}</span>`;
+          li.classList.toggle('selected', q.id === selectedQuestionId);
+          li.onclick = () => loadQuestion(q);
+          list.appendChild(li);
+        });
+      }
     }
 
     function clearQuestionForm() {
@@ -632,71 +729,84 @@
 
     document.getElementById('newSuiteBtn').onclick = async () => {
       const name = prompt('题库名称');
-      if (!name) return;
-      const s = await api('/api/eval/suites', { method: 'POST', body: JSON.stringify({ name }) });
-      selectedSuiteId = s.id;
-      await refreshSuites();
+      if (name) {
+        const s = await api('/api/eval/suites', { method: 'POST', body: JSON.stringify({ name }) });
+        selectedSuiteId = s.id;
+        await refreshSuites();
+      }
     };
 
     document.getElementById('deleteSuiteBtn').onclick = async () => {
-      if (!selectedSuiteId || !confirm('确定删除该题库及全部题目？')) return;
-      await api(`/api/eval/suites/${selectedSuiteId}`, { method: 'DELETE' });
-      selectedSuiteId = null;
-      await refreshSuites();
+      if (selectedSuiteId && confirm('确定删除该题库及全部题目？')) {
+        await api(`/api/eval/suites/${selectedSuiteId}`, { method: 'DELETE' });
+        selectedSuiteId = null;
+        await refreshSuites();
+      }
     };
 
     document.getElementById('newQuestionBtn').onclick = () => clearQuestionForm();
 
     document.getElementById('saveQuestionBtn').onclick = async () => {
-      if (!selectedSuiteId) return alert('请先选择题库');
-      const body = {
-        title: document.getElementById('qTitle').value.trim(),
-        prompt: document.getElementById('qPrompt').value.trim(),
-        category: document.getElementById('qCategory').value,
-        referenceAnswer: document.getElementById('qReference').value.trim() || null,
-        outputFormat: document.getElementById('qOutputFormat').value.trim() || null
-      };
-      if (!body.title || !body.prompt) return alert('标题和题干必填');
-      if (selectedQuestionId) {
-        await api(`/api/eval/questions/${selectedQuestionId}`, { method: 'PUT', body: JSON.stringify(body) });
+      if (selectedSuiteId) {
+        const body = {
+          title: document.getElementById('qTitle').value.trim(),
+          prompt: document.getElementById('qPrompt').value.trim(),
+          category: document.getElementById('qCategory').value,
+          referenceAnswer: document.getElementById('qReference').value.trim() || null,
+          outputFormat: document.getElementById('qOutputFormat').value.trim() || null
+        };
+        if (body.title && body.prompt) {
+          if (selectedQuestionId) {
+            await api(`/api/eval/questions/${selectedQuestionId}`, { method: 'PUT', body: JSON.stringify(body) });
+          } else {
+            const q = await api(`/api/eval/suites/${selectedSuiteId}/questions`, { method: 'POST', body: JSON.stringify(body) });
+            selectedQuestionId = q.id;
+          }
+          await refreshSuites();
+          await refreshQuestions();
+        } else {
+          alert('标题和题干必填');
+        }
       } else {
-        const q = await api(`/api/eval/suites/${selectedSuiteId}/questions`, { method: 'POST', body: JSON.stringify(body) });
-        selectedQuestionId = q.id;
+        alert('请先选择题库');
       }
-      await refreshSuites();
-      await refreshQuestions();
     };
 
     document.getElementById('deleteQuestionBtn').onclick = async () => {
-      if (!selectedQuestionId || !confirm('删除该题目？')) return;
-      await api(`/api/eval/questions/${selectedQuestionId}`, { method: 'DELETE' });
-      clearQuestionForm();
-      await refreshSuites();
-      await refreshQuestions();
+      if (selectedQuestionId && confirm('删除该题目？')) {
+        await api(`/api/eval/questions/${selectedQuestionId}`, { method: 'DELETE' });
+        clearQuestionForm();
+        await refreshSuites();
+        await refreshQuestions();
+      }
     };
 
     document.getElementById('startRunBtn').onclick = async () => {
       const suiteId = Number(document.getElementById('runSuiteSelect').value);
-      if (!suiteId) return alert('请选择题库');
-      const run = await api('/api/eval/runs', {
-        method: 'POST',
-        body: JSON.stringify({
-          suiteId,
-          notes: document.getElementById('runNotes').value.trim() || null
-        })
-      });
-      currentRunId = run.runId;
-      lastRenderedItemCount = 0;
-      document.getElementById('cancelRunBtn').disabled = false;
-      showRunLiveUi(true);
-      document.getElementById('liveFeed').innerHTML = '<div class="live-empty">评测已启动…</div>';
-      startPolling();
+      if (suiteId) {
+        const run = await api('/api/eval/runs', {
+          method: 'POST',
+          body: JSON.stringify({
+            suiteId,
+            notes: document.getElementById('runNotes').value.trim() || null
+          })
+        });
+        currentRunId = run.runId;
+        lastRenderedItemCount = 0;
+        document.getElementById('cancelRunBtn').disabled = false;
+        showRunLiveUi(true);
+        document.getElementById('liveFeed').innerHTML = '<div class="live-empty">评测已启动…</div>';
+        startPolling();
+      } else {
+        alert('请选择题库');
+      }
     };
 
     document.getElementById('cancelRunBtn').onclick = async () => {
-      if (!currentRunId) return;
-      await api(`/api/eval/runs/${currentRunId}/cancel`, { method: 'POST' });
-      stopPolling();
+      if (currentRunId) {
+        await api(`/api/eval/runs/${currentRunId}/cancel`, { method: 'POST' });
+        stopPolling();
+      }
     };
 
     function startPolling() {
@@ -712,44 +822,48 @@
     }
 
     async function pollRun() {
-      if (!currentRunId) return;
-      try {
-        const report = await api(`/api/eval/runs/${currentRunId}/report`);
-        const run = report.run;
-        const pct = run.totalQuestions ? Math.round(run.completedQuestions / run.totalQuestions * 100) : 0;
-        const liveScore = computeLiveScore(run, report.items);
-        const active = report.items.find(i => i.status === 'ANSWERING' || i.status === 'SCORING');
-        const activeHint = active ? ` · 第 ${active.itemIndex} 题 ${phaseLabel(active.status)}` : '';
-        document.getElementById('runProgressText').textContent =
-          `${run.status} · ${run.completedQuestions}/${run.totalQuestions} · 均分 ${liveScore != null ? liveScore.toFixed(1) : '-'}${activeHint}`;
-        document.getElementById('runProgressBar').style.width = pct + '%';
-        document.getElementById('statusBadge').textContent = run.status;
-        renderLivePanel(report);
-        if (currentReport?.run?.runId === run.runId) {
-          renderReportSummary(report);
+      if (currentRunId) {
+        try {
+          const report = await api(`/api/eval/runs/${currentRunId}/report`);
+          const run = report.run;
+          const pct = run.totalQuestions ? Math.round(run.completedQuestions / run.totalQuestions * 100) : 0;
+          const liveScore = computeLiveScore(run, report.items);
+          const active = report.items.find(i => i.status === 'ANSWERING' || i.status === 'SCORING');
+          const activeHint = active ? ` · 第 ${active.itemIndex} 题 ${phaseLabel(active.status)}` : '';
+          document.getElementById('runProgressText').textContent =
+            `${run.status} · ${run.completedQuestions}/${run.totalQuestions} · 均分 ${formatScore(liveScore)}${activeHint}`;
+          document.getElementById('runProgressBar').style.width = pct + '%';
+          document.getElementById('statusBadge').textContent = run.status;
+          renderLivePanel(report);
+          if (currentReport?.run?.runId === run.runId) {
+            renderReportSummary(report);
+          }
+          if (run.status === 'COMPLETED' || run.status === 'FAILED' || run.status === 'CANCELLED') {
+            stopPolling();
+            showRunLiveUi(false);
+            await showReport(currentRunId);
+            await refreshHistory();
+            switchTab('report');
+          }
+        } catch (e) {
+          document.getElementById('runError').style.display = 'block';
+          document.getElementById('runProgressText').textContent = '连接中断，重试中…';
+          document.getElementById('runError').textContent = e.message;
         }
-        if (run.status === 'COMPLETED' || run.status === 'FAILED' || run.status === 'CANCELLED') {
-          stopPolling();
-          showRunLiveUi(false);
-          await showReport(currentRunId);
-          await refreshHistory();
-          switchTab('report');
-        }
-      } catch (e) {
-        document.getElementById('runProgressText').textContent = '连接中断，重试中…';
       }
     }
 
     async function resumeRunningEvalIfAny() {
       const runs = await api('/api/eval/runs');
       const running = runs.find(r => r.status === 'RUNNING' || r.status === 'PENDING');
-      if (!running) return;
-      currentRunId = running.runId;
-      lastRenderedItemCount = 0;
-      document.getElementById('cancelRunBtn').disabled = false;
-      showRunLiveUi(true);
-      switchTab('run');
-      startPolling();
+      if (running) {
+        currentRunId = running.runId;
+        lastRenderedItemCount = 0;
+        document.getElementById('cancelRunBtn').disabled = false;
+        showRunLiveUi(true);
+        switchTab('run');
+        startPolling();
+      }
     }
 
     async function refreshHistory() {
@@ -758,7 +872,7 @@
       list.innerHTML = '';
       runs.forEach(r => {
         const li = document.createElement('li');
-        const score = r.totalScore != null ? r.totalScore.toFixed(1) : '-';
+        const score = formatScore(r.totalScore);
         li.innerHTML = `<div><strong>${r.suiteName}</strong>
           <span class="status-tag status-${r.status}">${r.status}</span></div>
           <div class="muted mono">${r.createdAt} · ${r.modelName} · 得分 ${score}/5 · ${r.completedQuestions}/${r.totalQuestions}</div>`;
@@ -788,7 +902,7 @@
         `${run.suiteName} · ${run.modelName}`;
       const liveScore = computeLiveScore(run, report.items);
       document.getElementById('reportTotal').textContent =
-        liveScore != null ? `${liveScore.toFixed(1)} / 5.0` : '暂无评分';
+        formatTotalScore(liveScore);
       document.getElementById('reportMeta').textContent =
         `${run.createdAt} · ${run.completedQuestions}/${run.totalQuestions} 题 · ${run.status}`;
       const reportError = document.getElementById('reportError');
@@ -800,17 +914,17 @@
         reportError.textContent = '';
       }
 
-      const dims = run.dimensionScores || {};
+      const dims = dimensionScoresOf(run);
       const bars = document.getElementById('dimBars');
       bars.innerHTML = '';
       Object.entries(DIM_LABELS).forEach(([key, label]) => {
         const val = dims[key];
-        const pct = val != null ? val / 5 * 100 : 0;
+        const pct = dimensionPercent(val);
         const row = document.createElement('div');
         row.className = 'dim-row';
         row.innerHTML = `<span>${label}</span>
           <div class="dim-bar"><div class="dim-fill" style="width:${pct}%"></div></div>
-          <span>${val != null ? val.toFixed(1) : '-'}</span>`;
+          <span>${formatScore(val)}</span>`;
         bars.appendChild(row);
       });
 
@@ -819,40 +933,42 @@
     function renderItemCard(container, item, editable) {
       const card = document.createElement('div');
       card.className = 'item-card';
-      const scoreClass = item.itemScore != null && item.itemScore <= 2 ? 'score-bad' : 'score-good';
+      const scoreClass = scoreClassForItem(item);
       card.innerHTML = `
         <div class="item-head">
           <div><strong>第 ${item.itemIndex} 题</strong> ${item.title}
             <span class="muted">· ${CATEGORY_LABELS[item.category] || item.category}</span>
-            ${item.manuallyEdited ? '<span class="muted">· 已人工改分</span>' : ''}
+            ${manualEditedBadge(item)}
           </div>
-          <div class="${scoreClass}">${item.itemScore != null ? item.itemScore.toFixed(1) : item.status}</div>
+          <div class="${scoreClass}">${itemScoreText(item)}</div>
         </div>
         <div class="item-body"></div>`;
       const body = card.querySelector('.item-body');
       body.innerHTML = `
-        <div class="item-block"><label>题目</label><pre>${escapeHtml(item.prompt)}</pre></div>
-        <div class="item-block"><label>模型回答</label><pre>${escapeHtml(item.modelAnswer || '(暂无)')}</pre></div>
-        <div class="item-block"><label>裁判评语</label><pre>${escapeHtml(item.judgeSummary || '-')}</pre></div>
-        ${item.errorMessage ? `<div class="item-block"><label>失败原因</label><pre class="score-bad">${escapeHtml(item.errorMessage)}</pre></div>` : ''}
+        <div class="item-block"><div class="block-label">题目</div><pre>${escapeHtml(item.prompt)}</pre></div>
+        <div class="item-block"><div class="block-label">模型回答</div><pre>${escapeHtml(item.modelAnswer || '(暂无)')}</pre></div>
+        <div class="item-block"><div class="block-label">裁判评语</div><pre>${escapeHtml(item.judgeSummary || '-')}</pre></div>
+        ${itemErrorBlock(item)}
         <div class="score-grid" id="scores-${item.id}"></div>
-        ${editable ? `<button style="margin-top:0.5rem" data-save="${item.id}">保存人工改分</button>` : ''}`;
+        ${saveScoreButton(item, editable)}`;
       const grid = body.querySelector(`#scores-${item.id}`);
       ['understanding','reasoning','code','domain','stability','instruction'].forEach(key => {
         const wrap = document.createElement('div');
-        wrap.innerHTML = `<label>${DIM_LABELS[key]}</label>
-          <input type="number" min="0" max="5" data-key="${key}" value="${item[key] ?? ''}" ${editable ? '' : 'disabled'}>`;
+        const inputId = `score-${item.id}-${key}`;
+        wrap.innerHTML = `<label for="${inputId}">${DIM_LABELS[key]}</label>
+          <input id="${inputId}" type="number" min="0" max="5" data-key="${key}" value="${item[key] ?? ''}" ${inputDisabledAttribute(editable)}>`;
         grid.appendChild(wrap);
       });
       if (editable) {
         body.querySelector(`[data-save="${item.id}"]`).onclick = async (e) => {
           e.stopPropagation();
           const inputs = body.querySelectorAll('input[data-key]');
-          const bodyObj = {};
-          inputs.forEach(inp => {
-            const v = inp.value.trim();
-            if (v !== '') bodyObj[inp.dataset.key] = Number(v);
-          });
+          const bodyObj = Object.fromEntries(
+            [...inputs]
+              .map(inp => [inp.dataset.key, inp.value.trim()])
+              .filter(([, value]) => value !== '')
+              .map(([key, value]) => [key, Number(value)])
+          );
           await api(`/api/eval/items/${item.id}/scores`, { method: 'PUT', body: JSON.stringify(bodyObj) });
           await showReport(currentRunId);
         };
@@ -862,20 +978,21 @@
     }
 
     function escapeHtml(text) {
-      return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return String(text).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
     }
 
     document.getElementById('continueRunBtn').onclick = async () => {
-      if (!currentRunId) return;
-      const name = prompt('新题库名称（可留空自动命名）', '');
-      const result = await api(`/api/eval/runs/${currentRunId}/continue`, {
-        method: 'POST',
-        body: JSON.stringify({ newSuiteName: name || null })
-      });
-      selectedSuiteId = result.suiteId;
-      await refreshSuites();
-      switchTab('suites');
-      alert(`已复制 ${result.questionCount} 题到新题库「${result.suiteName}」，可编辑后再次评测。`);
+      if (currentRunId) {
+        const name = prompt('新题库名称（可留空自动命名）', '');
+        const result = await api(`/api/eval/runs/${currentRunId}/continue`, {
+          method: 'POST',
+          body: JSON.stringify({ newSuiteName: name || null })
+        });
+        selectedSuiteId = result.suiteId;
+        await refreshSuites();
+        switchTab('suites');
+        alert(`已复制 ${result.questionCount} 题到新题库「${result.suiteName}」，可编辑后再次评测。`);
+      }
     };
 
     await loadModel();

@@ -1,5 +1,6 @@
 package com.example.myllm.eval.support;
 
+import com.example.myllm.eval.dto.EvalApiModels.EvalItemScoreUpdateRequest;
 import com.example.myllm.eval.entity.ModelEvalItem;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,10 @@ class EvalScoreSupportTests {
         item.setDomain(2);
         item.setStability(2);
         item.setInstruction(2);
-        EvalScoreSupport.applyManualScores(item, null, null, 5, null, null, null, "人工修正代码分");
+        EvalScoreSupport.applyManualScores(
+                item,
+                new EvalItemScoreUpdateRequest(
+                        null, null, 5, null, null, null, "人工修正代码分"));
         assertEquals(5, item.getCode());
         assertEquals(2.5, item.getItemScore());
     }

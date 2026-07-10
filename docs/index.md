@@ -4,6 +4,7 @@
 
 - [AGENTS.md](../AGENTS.md) — 编码 Agent 短地图
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — 架构概览
+- [code-quality-guidelines.md](code-quality-guidelines.md) — Sonar 扫描沉淀的代码质量规范
 - [README.md](../README.md) — 启动与开发
 
 ## 设计与决策

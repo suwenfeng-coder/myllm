@@ -35,6 +35,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 文档入库与向量检索的主业务门面。
+ *
+ * <p>入库侧串联解析、MinIO 存储、数据清洗、分块、批量 embedding、pgvector 写入和可选 Neo4j 构图任务；
+ * 检索侧提供 Dense 向量召回、文件列表、按文件名线索解析 fileId、删除补偿和旧版 RAG Prompt 组装。</p>
+ *
+ * <p>当前类仍承担较多职责，是后续拆分候选：解析/清洗/分块/写入可沉淀为 IngestionPipeline，自动 DDL
+ * 可迁移到 VectorSchemaManager，Prompt 组装可迁移到独立 RagPromptAssembler。</p>
+ */
 @Service
 public class FileEmbeddingService {
 
@@ -130,6 +139,12 @@ public class FileEmbeddingService {
 
     /**
      * 分阶段执行解析、清理、分块与向量入库，并通过 reporter 上报进度。
+     *
+     * <p>该方法是同步上传与异步上传 Worker 共用的真实入库流水线。它先生成本次入库的 {@code fileId}，
+     * 只有 pgvector 写入成功后才持久化清洗审计；若 embedding 或写库失败，会按 fileId 触发 best-effort
+     * 补偿清理，避免半成品分片参与后续检索。</p>
+     *
+     * <p>Neo4j 构图是派生能力：构图任务创建失败只记录告警，不回滚已经成功的向量入库。</p>
      *
      * @return 向量化结果及是否已入队 Neo4j 构图任务
      */
@@ -323,6 +338,15 @@ public class FileEmbeddingService {
         return search(query, topK, List.of());
     }
 
+    /**
+     * 执行 Dense 向量召回。
+     *
+     * <p>这里不做 RAG 最终准入判断，只返回按 pgvector 距离排序的候选分片。阈值过滤、文件名加权、
+     * BM25/Graph 融合和单文件限额由 {@link RagRetrievalService} 统一处理。</p>
+     *
+     * <p>当 {@code fileIds} 非空时只在用户指定范围内检索；SQL 表名只允许配置为合法标识符，避免动态表名
+     * 注入风险。</p>
+     */
     public VectorSearchResponse search(String query, Integer topK, List<String> fileIds) {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("检索问题不能为空");
@@ -545,6 +569,12 @@ public class FileEmbeddingService {
         }
     }
 
+    /**
+     * 将已经通过准入的分片组装成当前在线 ChatService 使用的 RAG Prompt。
+     *
+     * <p>这是兼容现有 `/api/chat` 的轻量实现：它保留文件名、chunkIndex 和章节路径，便于用户理解来源。
+     * 更严格的 Token 预算、不可信证据边界和引用白名单已在 Harness Context 中实现，后续可回灌到在线链路。</p>
+     */
     public String buildRagPrompt(String question, List<VectorChunkResult> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             return question;
@@ -568,6 +598,12 @@ public class FileEmbeddingService {
         return sb.toString();
     }
 
+    /**
+     * 确保 Demo/本地环境所需的 pgvector 表结构和索引存在。
+     *
+     * <p>这是为了降低本地试用门槛而保留的兼容 DDL。生产化后应迁移到可审计的版本化迁移脚本，并把
+     * {@code embedding vector} 固定为与模型版本匹配的物理维度。</p>
+     */
     private void ensureVectorTableExists() {
         vectorJdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS vector");
         vectorJdbcTemplate.execute("CREATE TABLE IF NOT EXISTS " + tableName + " (" // NOSONAR

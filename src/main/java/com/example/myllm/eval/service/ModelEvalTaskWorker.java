@@ -1,7 +1,6 @@
 package com.example.myllm.eval.service;
 
 import com.example.myllm.eval.config.EvalProperties;
-import com.example.myllm.eval.entity.ModelEvalRun;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

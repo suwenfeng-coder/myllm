@@ -1,6 +1,5 @@
 package com.example.myllm.eval.controller;
 
-import com.example.myllm.eval.dto.EvalApiModels;
 import com.example.myllm.eval.dto.EvalApiModels.EvalContinueRequest;
 import com.example.myllm.eval.dto.EvalApiModels.EvalContinueResponse;
 import com.example.myllm.eval.dto.EvalApiModels.EvalItemResponse;

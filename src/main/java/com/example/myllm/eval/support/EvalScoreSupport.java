@@ -1,6 +1,7 @@
 package com.example.myllm.eval.support;
 
 import com.example.myllm.eval.dto.EvalApiModels.EvalDimensionScores;
+import com.example.myllm.eval.dto.EvalApiModels.EvalItemScoreUpdateRequest;
 import com.example.myllm.eval.entity.ModelEvalItem;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -74,35 +75,27 @@ public final class EvalScoreSupport {
         item.setItemScore(averageItemScore(item));
     }
 
-    public static void applyManualScores(
-            ModelEvalItem item,
-            Integer understanding,
-            Integer reasoning,
-            Integer code,
-            Integer domain,
-            Integer stability,
-            Integer instruction,
-            String judgeSummary) {
-        if (understanding != null) {
-            item.setUnderstanding(clampScore(understanding));
+    public static void applyManualScores(ModelEvalItem item, EvalItemScoreUpdateRequest request) {
+        if (request.understanding() != null) {
+            item.setUnderstanding(clampScore(request.understanding()));
         }
-        if (reasoning != null) {
-            item.setReasoning(clampScore(reasoning));
+        if (request.reasoning() != null) {
+            item.setReasoning(clampScore(request.reasoning()));
         }
-        if (code != null) {
-            item.setCode(clampScore(code));
+        if (request.code() != null) {
+            item.setCode(clampScore(request.code()));
         }
-        if (domain != null) {
-            item.setDomain(clampScore(domain));
+        if (request.domain() != null) {
+            item.setDomain(clampScore(request.domain()));
         }
-        if (stability != null) {
-            item.setStability(clampScore(stability));
+        if (request.stability() != null) {
+            item.setStability(clampScore(request.stability()));
         }
-        if (instruction != null) {
-            item.setInstruction(clampScore(instruction));
+        if (request.instruction() != null) {
+            item.setInstruction(clampScore(request.instruction()));
         }
-        if (judgeSummary != null) {
-            item.setJudgeSummary(judgeSummary);
+        if (request.judgeSummary() != null) {
+            item.setJudgeSummary(request.judgeSummary());
         }
         item.setManuallyEdited(true);
         item.setItemScore(averageItemScore(item));

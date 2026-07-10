@@ -20,7 +20,13 @@ import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-/** 批量 embedding 与 JDBC batch 写入 pgvector。 */
+/**
+ * 批量 embedding 与 JDBC batch 写入 pgvector。
+ *
+ * <p>本类是入库性能优化的核心：先按配置批量调用 embedding 模型，再使用 JDBC batch 一次写入同批分片。
+ * 它同时负责把清洗版本、分块策略、解析元数据、内容哈希和模型版本写入 metadata，方便后续检索诊断和
+ * 模型/分块策略迁移。</p>
+ */
 @Component
 public class VectorChunkBatchWriter {
 
@@ -80,6 +86,12 @@ public class VectorChunkBatchWriter {
     }
 
     /**
+     * 批量生成并写入所有分片向量。
+     *
+     * <p>写入前会校验每个向量的维度和有限数值，防止模型切换或异常输出污染同一向量表。当前物理列仍是
+     * pgvector 的通用 {@code vector}，因此这里的应用层校验是保护旧表的最后一道门；生产化后应配合
+     * {@code vector(1024)} 或模型版本表。</p>
+     *
      * @return 实际 embedding 维度
      */
     @SuppressWarnings({"java:S3776", "java:S6909"})
