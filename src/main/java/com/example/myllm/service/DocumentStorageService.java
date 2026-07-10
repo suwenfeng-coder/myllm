@@ -6,6 +6,7 @@ import com.example.myllm.repository.DocumentStorageLogRepository;
 import com.example.myllm.support.document.DocumentTextRenderer;
 import com.example.myllm.support.document.DocumentParseResult;
 import com.example.myllm.support.document.ParsedDocument;
+import com.example.myllm.support.minio.MinioObjectPaths;
 import com.example.myllm.support.minio.MinioStorageService;
 import com.example.myllm.support.minio.MinioStoredObject;
 import java.time.LocalDate;
@@ -49,14 +50,15 @@ public class DocumentStorageService {
         MinioStorageService storageService = minioStorageService.orElseThrow(() ->
                 new IllegalStateException("MinIO 存储服务未初始化，请检查 MinIO 配置"));
 
+        String normalizedFileId = MinioObjectPaths.requireValidFileId(fileId);
         LocalDate storageDate = LocalDate.now(ZoneId.systemDefault());
         String parsedContent = DocumentTextRenderer.renderRaw(parsedDocument.blocks());
-        MinioStoredObject originalObject = storageService.storeOriginal(fileId, file, storageDate);
+        MinioStoredObject originalObject = storageService.storeOriginal(normalizedFileId, file, storageDate);
         MinioStoredObject parsedObject = storageService.storeParsed(
-                fileId, fileName, parsedContent, storageDate);
+                normalizedFileId, fileName, parsedContent, storageDate);
 
         DocumentStorageLog storageLog = new DocumentStorageLog();
-        storageLog.setFileId(fileId.trim());
+        storageLog.setFileId(normalizedFileId);
         storageLog.setFileName(fileName == null || fileName.isBlank() ? "unknown" : fileName);
         storageLog.setBucket(originalObject.bucket());
         storageLog.setOriginalObjectPath(originalObject.objectPath());
