@@ -46,6 +46,7 @@ public class ToolExecutor {
     private final HarnessToolCallRepository toolCallRepository;
     private final HarnessProperties properties;
     private final ObjectMapper objectMapper;
+    private final ToolArgumentAuditSummarizer argumentAuditSummarizer;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public ToolExecutor(
@@ -53,12 +54,14 @@ public class ToolExecutor {
             ToolPolicyEngine policyEngine,
             HarnessToolCallRepository toolCallRepository,
             HarnessProperties properties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ToolArgumentAuditSummarizer argumentAuditSummarizer) {
         this.toolRegistry = toolRegistry;
         this.policyEngine = policyEngine;
         this.toolCallRepository = toolCallRepository;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.argumentAuditSummarizer = argumentAuditSummarizer;
     }
 
     /**
@@ -96,7 +99,12 @@ public class ToolExecutor {
 
         HarnessToolCall audit = null;
         if (persistAudit) {
-            audit = createAuditRecord(safeContext, descriptor, idempotencyKey, input);
+            audit = createAuditRecord(
+                    safeContext,
+                    descriptor,
+                    tool.inputType(),
+                    idempotencyKey,
+                    input);
             audit.setStatus(ToolCallStatus.RUNNING);
             toolCallRepository.saveAndFlush(audit);
         }
@@ -229,6 +237,7 @@ public class ToolExecutor {
     private HarnessToolCall createAuditRecord(
             ToolExecutionContext context,
             ToolDescriptor descriptor,
+            Class<?> declaredInputType,
             String idempotencyKey,
             Object input) {
         HarnessToolCall auditRecord = new HarnessToolCall();
@@ -241,7 +250,7 @@ public class ToolExecutor {
         auditRecord.setStatus(ToolCallStatus.PENDING);
         auditRecord.setIdempotencyKey(idempotencyKey);
         auditRecord.setArgumentsHash(hashInput(input));
-        auditRecord.setArgumentsRedactedJson(redactArguments(input));
+        auditRecord.setArgumentsRedactedJson(argumentAuditSummarizer.summarize(declaredInputType, input));
         return auditRecord;
     }
 
@@ -250,14 +259,6 @@ public class ToolExecutor {
             return context.idempotencyKey().trim();
         }
         return toolName + ":" + hashInput(input);
-    }
-
-    private static String redactArguments(Object input) {
-        if (input == null) {
-            return null;
-        }
-        String raw = String.valueOf(input);
-        return truncate(raw, 500);
     }
 
     private static String hashInput(Object input) {

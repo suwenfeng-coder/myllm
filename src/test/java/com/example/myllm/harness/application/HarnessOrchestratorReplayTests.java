@@ -41,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
         ContextAssembler.class,
         FinalAnswerValidator.class,
         ToolExecutor.class,
+        ToolArgumentAuditSummarizer.class,
         ToolPolicyEngine.class,
         HarnessConfiguration.class,
         HarnessOrchestratorReplayTests.ReplayTestConfig.class,
