@@ -48,33 +48,6 @@ public final class MinioObjectPaths {
         return objectKey(parsedPrefix, date, parsedFileName(fileId, originalFileName));
     }
 
-    public static String originalObjectKey(
-            String uploadsPrefix, LocalDate date, String originalFileName) {
-        return normalizePrefix(uploadsPrefix) + "/"
-                + dateFolder(date) + "/"
-                + sanitizeFileName(originalFileName);
-    }
-
-    public static String parsedObjectKey(
-            String parsedPrefix, LocalDate date, String parsedFileName) {
-        return normalizePrefix(parsedPrefix) + "/"
-                + dateFolder(date) + "/"
-                + sanitizeFileName(parsedFileName);
-    }
-
-    public static String parsedFileName(String originalFileName) {
-        String baseName = baseNameOf(originalFileName);
-        if (baseName.isBlank()) {
-            return "parsed.md";
-        }
-        int dot = baseName.lastIndexOf('.');
-        String stem = dot > 0 ? baseName.substring(0, dot) : baseName;
-        if (stem.isBlank()) {
-            return "parsed.md";
-        }
-        return stem + ".parsed.md";
-    }
-
     public static String baseNameOf(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return "unknown";

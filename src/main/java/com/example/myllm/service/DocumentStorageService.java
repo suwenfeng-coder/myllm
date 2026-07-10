@@ -51,8 +51,9 @@ public class DocumentStorageService {
 
         LocalDate storageDate = LocalDate.now(ZoneId.systemDefault());
         String parsedContent = DocumentTextRenderer.renderRaw(parsedDocument.blocks());
-        MinioStoredObject originalObject = storageService.storeOriginal(file, storageDate);
-        MinioStoredObject parsedObject = storageService.storeParsed(fileName, parsedContent, storageDate);
+        MinioStoredObject originalObject = storageService.storeOriginal(fileId, file, storageDate);
+        MinioStoredObject parsedObject = storageService.storeParsed(
+                fileId, fileName, parsedContent, storageDate);
 
         DocumentStorageLog storageLog = new DocumentStorageLog();
         storageLog.setFileId(fileId.trim());

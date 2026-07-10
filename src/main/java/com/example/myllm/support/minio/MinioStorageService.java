@@ -44,13 +44,15 @@ public class MinioStorageService {
         }
     }
 
-    public MinioStoredObject storeOriginal(MultipartFile file, LocalDate storageDate) {
+    public MinioStoredObject storeOriginal(
+            String fileId, MultipartFile file, LocalDate storageDate) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空");
         }
         String fileName = file.getOriginalFilename() == null ? "unknown" : file.getOriginalFilename();
+        String storedFileName = MinioObjectPaths.originalFileName(fileId, fileName);
         String objectPath = MinioObjectPaths.originalObjectKey(
-                properties.uploadsPrefix(), storageDate, fileName);
+                properties.uploadsPrefix(), storageDate, fileId, fileName);
         try {
             byte[] bytes = file.getBytes();
             String contentType = file.getContentType() == null
@@ -58,26 +60,28 @@ public class MinioStorageService {
                     : file.getContentType();
             uploadBytes(objectPath, bytes, contentType);
             log.info("原始文件已写入 MinIO bucket={} object={} size={}", properties.bucket(), objectPath, bytes.length);
-            return new MinioStoredObject(properties.bucket(), objectPath, MinioObjectPaths.sanitizeFileName(fileName),
-                    contentType, bytes.length);
+            return new MinioStoredObject(
+                    properties.bucket(), objectPath, storedFileName, contentType, bytes.length);
         } catch (Exception e) {
             throw new MinioStorageException("原始文件写入 MinIO 失败: " + fileName, e);
         }
     }
 
     public MinioStoredObject storeParsed(
-            String originalFileName, String parsedContent, LocalDate storageDate) {
-        if (parsedContent == null) {
-            parsedContent = "";
-        }
-        String parsedFileName = MinioObjectPaths.parsedFileName(originalFileName);
+            String fileId,
+            String originalFileName,
+            String parsedContent,
+            LocalDate storageDate) {
+        String normalizedContent = parsedContent == null ? "" : parsedContent;
+        String parsedFileName = MinioObjectPaths.parsedFileName(fileId, originalFileName);
         String objectPath = MinioObjectPaths.parsedObjectKey(
-                properties.parsedPrefix(), storageDate, parsedFileName);
+                properties.parsedPrefix(), storageDate, fileId, originalFileName);
         try {
-            byte[] bytes = parsedContent.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = normalizedContent.getBytes(StandardCharsets.UTF_8);
             uploadBytes(objectPath, bytes, "text/markdown; charset=utf-8");
             log.info("解析文件已写入 MinIO bucket={} object={} size={}", properties.bucket(), objectPath, bytes.length);
-            return new MinioStoredObject(properties.bucket(), objectPath, parsedFileName,
+            return new MinioStoredObject(
+                    properties.bucket(), objectPath, parsedFileName,
                     "text/markdown; charset=utf-8", bytes.length);
         } catch (Exception e) {
             throw new MinioStorageException("解析文件写入 MinIO 失败: " + originalFileName, e);
