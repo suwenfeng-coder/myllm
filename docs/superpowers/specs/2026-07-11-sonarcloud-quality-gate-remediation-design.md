@@ -129,7 +129,7 @@ SonarCloud 将文件字节传播到 `bytes.length`，但最终日志参数是整
 
 - 原始文件和解析文件写入成功日志均移除 `size`，保留 bucket 和已经过对象键规则处理的
   object key。
-- `MinioStoredObject.size` 返回值、上传字节和对象元数据不变。
+- `MinioStoredObject.sizeBytes` 返回值、上传字节和对象元数据不变。
 
 ## 代码味道修复设计
 
@@ -167,7 +167,7 @@ headers: {
 - `DocumentParseServiceTests` 增加带 CR/LF 文件名和异常原因的自动解析场景，断言日志中的
   扩展名和原因保持单行，解析器仍收到原始业务扩展名，返回元数据仍保留原始失败原因。
 - 新增 `DocForgeClientTests`，直接验证内部文件名清洗方法对路径、空值和 CR/LF 的处理。
-- `MinioStorageServiceTests` 补充 `MinioStoredObject.size` 断言，并继续验证上传调用和对象键，
+- `MinioStorageServiceTests` 补充 `MinioStoredObject.sizeBytes` 断言，并继续验证上传调用和对象键，
   证明移除日志字段没有改变返回大小或存储目标。
 - 复用现有 Harness 和存储测试验证 5 条 Java 代码味道的等价修改。
 
