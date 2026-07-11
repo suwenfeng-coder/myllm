@@ -29,7 +29,6 @@ import org.springframework.stereotype.Service;
 public class ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
-    private static final int LOG_PREVIEW_LEN = 200;
 
     private final ChatClient chatClient;
     private final TransactionLogService transactionLogService;
@@ -97,7 +96,7 @@ public class ChatService {
                 List<VectorChunkResult> relevantChunks = retrieval.acceptedHits();
                 if (rewrite != null && rewrite.skipRag()) {
                     ragStatus = "SKIPPED_BY_INTENT";
-                    logRagSkipped(rewrite, message);
+                    logRagSkipped(rewrite);
                 } else if (relevantChunks.isEmpty()) {
                     double topScore = chunks.isEmpty() ? 0.0 : chunks.get(0).similarity();
                     ragStatus = chunks.isEmpty() ? "NO_HIT" : "LOW_RELEVANCE";
@@ -113,18 +112,19 @@ public class ChatService {
             } catch (Exception e) {
                 ragError = e.getMessage();
                 ragStatus = "RETRIEVAL_FAILED";
-                log.warn("RAG 检索失败，回退为普通对话 message={}", preview(message), e);
+                log.warn("RAG 检索失败，回退为普通对话 errorType={}",
+                        e.getClass().getSimpleName());
             }
         }
 
-        logModelStart(message, systemPrompt, useRag);
+        logModelStart(useRag);
 
         long start = System.currentTimeMillis();
         try {
             ModelCallResult result = invokeModel(effectiveMessage, systemPrompt);
             InferenceMetrics metrics = result.metrics();
 
-            logModelSuccess(metrics, result.reply());
+            logModelSuccess(metrics);
 
             TransactionLog txLog = transactionLogService.saveSuccess(
                     provider, model, message, result.reply(), systemPrompt, requestType, metrics);
@@ -169,7 +169,7 @@ public class ChatService {
      * 轻量健康/示例对话入口，不走 RAG，也不支持临时系统提示词。
      */
     public String simpleChat(String message) {
-        logSimpleStart(message);
+        logSimpleStart();
 
         long start = System.currentTimeMillis();
         try {
@@ -237,9 +237,9 @@ public class ChatService {
 
     public record DirectCallResult(String reply, Long durationMs) {}
 
-    private void logRagSkipped(QueryRewriteResult rewrite, String message) {
+    private void logRagSkipped(QueryRewriteResult rewrite) {
         if (log.isInfoEnabled()) {
-            log.info("RAG 跳过 useRag=true intent={} originalQuery={}", rewrite.intent(), preview(message));
+            log.info("RAG 跳过 useRag=true intent={}", rewrite.intent());
         }
     }
 
@@ -259,32 +259,30 @@ public class ChatService {
 
     private void logRewrite(QueryRewriteResult rewrite) {
         if (rewrite != null && log.isInfoEnabled()) {
-            log.info("RAG 问题改写 original={} normalized={} retrieval={} intent={} strategy={} hints={}",
-                    preview(rewrite.originalQuery()), preview(rewrite.normalizedQuery()),
-                    preview(rewrite.retrievalQuery()), rewrite.intent(), rewrite.strategy(),
-                    rewrite.filenameHints());
+            log.info("RAG 问题改写 intent={} strategy={}",
+                    rewrite.intent(), rewrite.strategy());
         }
     }
 
-    private void logModelStart(String message, String systemPrompt, boolean useRag) {
+    private void logModelStart(boolean useRag) {
         if (log.isInfoEnabled()) {
-            log.info("调用本地模型开始 provider={} model={} useRag={} message={} systemPrompt={}",
-                    provider, model, useRag, preview(message), preview(systemPrompt));
+            log.info("调用本地模型开始 provider={} model={} useRag={}",
+                    provider, model, useRag);
         }
     }
 
-    private void logModelSuccess(InferenceMetrics metrics, String reply) {
+    private void logModelSuccess(InferenceMetrics metrics) {
         if (log.isInfoEnabled()) {
-            log.info("调用本地模型完成 provider={} model={} elapsedMs={} inputTokens={} outputTokens={} totalTokens={} inferenceSpeedTps={} evalDurationMs={} reply={}",
+            log.info("调用本地模型完成 provider={} model={} elapsedMs={} inputTokens={} outputTokens={} totalTokens={} inferenceSpeedTps={} evalDurationMs={}",
                     provider, model, metrics.wallClockDurationMs(), metrics.inputTokens(),
                     metrics.outputTokens(), metrics.totalTokens(), formatSpeed(metrics.inferenceSpeedTps()),
-                    metrics.evalDurationMs(), preview(reply));
+                    metrics.evalDurationMs());
         }
     }
 
-    private void logSimpleStart(String message) {
+    private void logSimpleStart() {
         if (log.isInfoEnabled()) {
-            log.info("快速对话开始 provider={} model={} message={}", provider, model, preview(message));
+            log.info("快速对话开始 provider={} model={}", provider, model);
         }
     }
 
@@ -325,19 +323,6 @@ public class ChatService {
         InferenceMetrics metrics = InferenceMetricsExtractor.from(response, wallClockDurationMs);
         String reply = response.getResult().getOutput().getText();
         return new ModelCallResult(reply, metrics);
-    }
-
-    private static String preview(String text) {
-        if (text == null) {
-            return "(null)";
-        }
-        if (text.isBlank()) {
-            return "(empty)";
-        }
-        if (text.length() <= LOG_PREVIEW_LEN) {
-            return text;
-        }
-        return text.substring(0, LOG_PREVIEW_LEN) + "...(+" + (text.length() - LOG_PREVIEW_LEN) + " chars)";
     }
 
     private static String formatSpeed(Double speed) {
