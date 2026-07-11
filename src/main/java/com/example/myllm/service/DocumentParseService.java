@@ -232,24 +232,16 @@ public class DocumentParseService {
                 ParsedDocument enriched = enrichParseMetadata(
                         document, "auto", appliedMode, attempted, fallbackReason);
 
-                String loggedExtension = extension.replaceAll("[\\r\\n]", "_");
-                String loggedFallbackReason = fallbackReason == null
-                        ? null
-                        : fallbackReason.replaceAll("[\\r\\n]", "_");
-                log.info("自动解析完成 requested=auto applied={} extension={} attempted={} fallbackReason={}",
-                        appliedMode, loggedExtension, attempted, loggedFallbackReason);
+                log.info("自动解析完成 requested=auto applied={} attempted={}",
+                        appliedMode, attempted);
 
                 return DocumentParseResult.from(
                         enriched, "auto", appliedMode, durationMs, attempted, fallbackReason);
             } catch (RuntimeException e) {
                 lastFailure = e;
-                String failureReason = conciseMessage(e);
-                failures.add(mode + ": " + failureReason);
+                failures.add(mode + ": " + conciseMessage(e));
                 if (log.isWarnEnabled()) {
-                    String loggedExtension = extension.replaceAll("[\\r\\n]", "_");
-                    String loggedFailureReason = failureReason.replaceAll("[\\r\\n]", "_");
-                    log.warn("自动解析候选失败，将尝试下一模式 mode={} extension={} reason={}",
-                            mode, loggedExtension, loggedFailureReason);
+                    log.warn("自动解析候选失败，将尝试下一模式 mode={}", mode);
                 }
             }
         }

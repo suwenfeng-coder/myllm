@@ -238,7 +238,7 @@ class DocumentParseServiceTests {
     }
 
     @Test
-    void autoParseSanitizesExtensionOnlyInLogs() {
+    void autoParseOmitsExtensionFromLogsWithoutChangingBusinessValue() {
         String rawExtension = "safe\r\nforged";
         AtomicReference<String> receivedExtension = new AtomicReference<>();
         LocalDocumentParser localParser = new LocalDocumentParser() {
@@ -271,14 +271,14 @@ class DocumentParseServiceTests {
             assertEquals(rawExtension, result.document().metadata().get("extension"));
             String success = logs.eventStartingWith("自动解析完成").getFormattedMessage();
             assertEquals(
-                    "自动解析完成 requested=auto applied=local extension=safe__forged attempted=[local] fallbackReason=null",
+                    "自动解析完成 requested=auto applied=local attempted=[local]",
                     success);
             assertSingleLine(success);
         }
     }
 
     @Test
-    void autoParseSanitizesFailureLogsWithoutChangingFallbackReason() {
+    void autoParseOmitsFailureDetailsFromLogsWithoutChangingFallbackReason() {
         DocForgeRemoteDocumentParser makerParser =
                 new DocForgeRemoteDocumentParser(null, "maker", "maker") {
                     @Override
@@ -327,13 +327,13 @@ class DocumentParseServiceTests {
 
             String warning = logs.eventStartingWith("自动解析候选失败").getFormattedMessage();
             assertEquals(
-                    "自动解析候选失败，将尝试下一模式 mode=maker extension=pdf reason=maker model__unavailable",
+                    "自动解析候选失败，将尝试下一模式 mode=maker",
                     warning);
             assertSingleLine(warning);
 
             String success = logs.eventStartingWith("自动解析完成").getFormattedMessage();
             assertEquals(
-                    "自动解析完成 requested=auto applied=docling extension=pdf attempted=[maker, docling] fallbackReason=maker: maker model__unavailable",
+                    "自动解析完成 requested=auto applied=docling attempted=[maker, docling]",
                     success);
             assertSingleLine(success);
         }
