@@ -212,8 +212,10 @@ public class DocForgeClient {
             return parseSync(file, docForgeEngine);
         } catch (DocForgeServiceException e) {
             if (e.statusCode() >= 500) {
-                log.warn("DocForge 同步解析失败(status={})，改走异步: engine={}, file={}",
-                        e.statusCode(), docForgeEngine, fileName);
+                log.warn(
+                        "DocForge 同步解析失败(status={})，改走异步: engine={}",
+                        e.statusCode(),
+                        docForgeEngine);
                 return parseAsync(file, docForgeEngine, listener);
             }
             throw e;
@@ -234,7 +236,7 @@ public class DocForgeClient {
 
     private DocForgeParseResponse parseSync(MultipartFile file, String engine) {
         String fileName = originalFileName(file);
-        log.info("DocForge 同步解析: engine={}, file={}, size={}", engine, fileName, file.getSize());
+        log.info("DocForge 同步解析: engine={}", engine);
         try {
             return restClient.post()
                     .uri("/v1/parse/sync")
@@ -260,7 +262,7 @@ public class DocForgeClient {
     @SuppressWarnings("java:S3776") // Polling state machine keeps all terminal states explicit.
     private DocForgeParseResponse parseAsync(MultipartFile file, String engine, ParseProgressListener listener) {
         String fileName = originalFileName(file);
-        log.info("DocForge 异步解析: engine={}, file={}, size={}", engine, fileName, file.getSize());
+        log.info("DocForge 异步解析: engine={}", engine);
         DocForgeJobCreateResponse created;
         try {
             created = restClient.post()
@@ -440,14 +442,15 @@ public class DocForgeClient {
         return fileName == null || fileName.isBlank() ? UNKNOWN : fileName;
     }
 
-    private static String sanitizeFilename(String fileName) {
+    static String sanitizeFilename(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return UNKNOWN;
         }
         String normalized = fileName.replace('\\', '/');
         int slash = normalized.lastIndexOf('/');
         String leaf = slash >= 0 ? normalized.substring(slash + 1) : normalized;
-        return leaf.isBlank() ? UNKNOWN : leaf;
+        String sanitized = leaf.replaceAll("[\\r\\n]", "_");
+        return sanitized.isBlank() ? UNKNOWN : sanitized;
     }
 
     private DocForgeFormatsResponse fallbackFormats(String engine) {
