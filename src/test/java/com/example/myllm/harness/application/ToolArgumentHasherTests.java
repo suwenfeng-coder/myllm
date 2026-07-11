@@ -5,20 +5,23 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.example.myllm.harness.domain.HarnessDomainException;
 import com.example.myllm.harness.domain.HarnessErrorCode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class ToolArgumentHasherTests {
@@ -100,6 +103,56 @@ class ToolArgumentHasherTests {
     }
 
     @Test
+    @DisplayName("Java 数组和结构化 JsonNode 与等价集合生成相同哈希")
+    void hashesEquivalentArraysAndStructuredJsonNodesTheSame() {
+        Object[] objectArray = {"a", 1, true};
+        assertEquals(hasher.hash(List.of("a", 1, true)), hasher.hash(objectArray));
+
+        int[] primitiveArray = {1, 2, 3};
+        assertEquals(hasher.hash(List.of(1, 2, 3)), hasher.hash(primitiveArray));
+
+        ObjectNode objectNode = JsonNodeFactory.instance.objectNode();
+        objectNode.put("z", 2);
+        objectNode.put("a", "x");
+        Map<String, Object> equivalentMap = new LinkedHashMap<>();
+        equivalentMap.put("a", "x");
+        equivalentMap.put("z", 2);
+        assertEquals(hasher.hash(equivalentMap), hasher.hash(objectNode));
+
+        ArrayNode arrayNode = JsonNodeFactory.instance.arrayNode();
+        arrayNode.add("a");
+        arrayNode.add(1);
+        arrayNode.add(true);
+        assertEquals(hasher.hash(List.of("a", 1, true)), hasher.hash(arrayNode));
+    }
+
+    @Test
+    @DisplayName("合法标量 JsonNode 与对应 Java 标量生成相同哈希")
+    void hashesEquivalentScalarJsonNodesTheSame() {
+        assertEquals(
+                hasher.hash("文本"),
+                hasher.hash(JsonNodeFactory.instance.textNode("文本")));
+        assertEquals(
+                hasher.hash(true),
+                hasher.hash(JsonNodeFactory.instance.booleanNode(true)));
+        assertEquals(
+                hasher.hash(42),
+                hasher.hash(JsonNodeFactory.instance.numberNode(42)));
+        assertEquals(
+                hasher.hash(new BigDecimal("1.5")),
+                hasher.hash(JsonNodeFactory.instance.numberNode(new BigDecimal("1.5"))));
+        assertEquals(
+                hasher.hash(null),
+                hasher.hash(JsonNodeFactory.instance.nullNode()));
+    }
+
+    @Test
+    @DisplayName("拒绝非 Set 的其他 Iterable")
+    void rejectsOtherIterableWithFixedFailure() {
+        assertFixedFailure(new ArrayDeque<>(List.of("a", "b")));
+    }
+
+    @Test
     void rejectsUnsupportedValuesWithFixedFailure() {
         assertFixedFailure(Map.of(1, "value"));
         assertFixedFailure(Double.NaN);
@@ -140,6 +193,43 @@ class ToolArgumentHasherTests {
     }
 
     @Test
+    @DisplayName("深度 32 成功且深度 33 失败")
+    void enforcesTheExactDepthBoundary() {
+        assertSuccessfulHash(nestedListsWithLeafDepth(32));
+        assertFixedFailure(nestedListsWithLeafDepth(33));
+    }
+
+    @Test
+    @DisplayName("总节点 10000 成功且 10001 失败")
+    void enforcesTheExactNodeBoundary() {
+        // 根 List 本身占一个节点，其余节点均为 null 子节点。
+        List<Object> exactlyTenThousandNodes = Collections.nCopies(9_999, null);
+        List<Object> tenThousandAndOneNodes = Collections.nCopies(10_000, null);
+        assertEquals(10_000, 1 + exactlyTenThousandNodes.size());
+        assertEquals(10_001, 1 + tenThousandAndOneNodes.size());
+
+        assertSuccessfulHash(exactlyTenThousandNodes);
+        assertFixedFailure(tenThousandAndOneNodes);
+    }
+
+    @Test
+    @DisplayName("规范 JSON 恰好 1048576 字节成功且多一字节失败")
+    void enforcesTheExactJsonByteBoundary() {
+        // 纯 ASCII 字符串的规范 JSON 只额外包含首尾两个引号，域前缀不计入此上限。
+        String exactlyOneMibJson = "a".repeat(1_048_574);
+        String oneByteOverOneMibJson = "a".repeat(1_048_575);
+        assertEquals(
+                1_048_576,
+                exactlyOneMibJson.getBytes(StandardCharsets.UTF_8).length + 2);
+        assertEquals(
+                1_048_577,
+                oneByteOverOneMibJson.getBytes(StandardCharsets.UTF_8).length + 2);
+
+        assertSuccessfulHash(exactlyOneMibJson);
+        assertFixedFailure(oneByteOverOneMibJson);
+    }
+
+    @Test
     void rejectsThrowingRecordWithoutLeakingSecret() {
         HarnessDomainException exception = assertThrows(
                 HarnessDomainException.class,
@@ -158,6 +248,19 @@ class ToolArgumentHasherTests {
         assertEquals(HarnessErrorCode.VALIDATION_FAILED, exception.getErrorCode());
         assertEquals("工具参数无法安全规范化", exception.getMessage());
         assertNull(exception.getCause());
+    }
+
+    private void assertSuccessfulHash(Object input) {
+        assertEquals(64, hasher.hash(input).length());
+    }
+
+    private Object nestedListsWithLeafDepth(int depth) {
+        // 叶子位于根时深度为 0；每包一层 List，叶子深度增加 1。
+        Object value = "leaf";
+        for (int index = 0; index < depth; index++) {
+            value = List.of(value);
+        }
+        return value;
     }
 
     private enum Status {
