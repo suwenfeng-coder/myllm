@@ -9,8 +9,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.example.myllm.harness.domain.HarnessDomainException;
 import com.example.myllm.harness.domain.HarnessErrorCode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.BigIntegerNode;
+import com.fasterxml.jackson.databind.node.DecimalNode;
+import com.fasterxml.jackson.databind.node.DoubleNode;
+import com.fasterxml.jackson.databind.node.FloatNode;
+import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ShortNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -147,6 +155,66 @@ class ToolArgumentHasherTests {
     }
 
     @Test
+    @DisplayName("Jackson 标准数值节点具体类型与对应 Java 数值生成相同哈希")
+    void hashesEveryAllowedStandardNumericNodeLikeItsJavaNumber() {
+        assertEquals(hasher.hash((short) 7), hasher.hash(ShortNode.valueOf((short) 7)));
+        assertEquals(hasher.hash(7), hasher.hash(IntNode.valueOf(7)));
+        assertEquals(hasher.hash(7L), hasher.hash(LongNode.valueOf(7L)));
+        assertEquals(
+                hasher.hash(BigInteger.valueOf(7L)),
+                hasher.hash(BigIntegerNode.valueOf(BigInteger.valueOf(7L))));
+        assertEquals(hasher.hash(1.25F), hasher.hash(FloatNode.valueOf(1.25F)));
+        assertEquals(hasher.hash(1.25D), hasher.hash(DoubleNode.valueOf(1.25D)));
+        assertEquals(
+                hasher.hash(new BigDecimal("1.25")),
+                hasher.hash(DecimalNode.valueOf(new BigDecimal("1.25"))));
+    }
+
+    @Test
+    @DisplayName("自定义 TextNode 在顶层和嵌套入口均固定失败")
+    void rejectsCustomTextNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new CustomTextNode("密钥-不得泄露"));
+    }
+
+    @Test
+    @DisplayName("自定义数值节点在顶层和嵌套入口均固定失败")
+    void rejectsCustomNumericNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new CustomIntNode(7));
+    }
+
+    @Test
+    @DisplayName("自定义 ObjectNode 在顶层和嵌套入口均固定失败")
+    void rejectsCustomObjectNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new MisreportingObjectNode());
+    }
+
+    @Test
+    @DisplayName("自定义 ArrayNode 在顶层和嵌套入口均固定失败")
+    void rejectsCustomArrayNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new CustomArrayNode());
+    }
+
+    @Test
+    @DisplayName("BigInteger 子类在顶层和 Map、Record 嵌套入口均固定失败")
+    void rejectsBigIntegerSubclassAtTopLevelAndNestedEntrypoints() {
+        CustomBigInteger input = new CustomBigInteger("7");
+
+        assertFixedFailure(input);
+        assertFixedFailure(Map.of("value", input));
+        assertFixedFailure(new RecordWithValue(input));
+    }
+
+    @Test
+    @DisplayName("BigDecimal 子类在顶层和 Map、Record 嵌套入口均固定失败")
+    void rejectsBigDecimalSubclassAtTopLevelAndNestedEntrypoints() {
+        CustomBigDecimal input = new CustomBigDecimal("1.25");
+
+        assertFixedFailure(input);
+        assertFixedFailure(Map.of("value", input));
+        assertFixedFailure(new RecordWithValue(input));
+    }
+
+    @Test
     @DisplayName("拒绝非 Set 的其他 Iterable")
     void rejectsOtherIterableWithFixedFailure() {
         assertFixedFailure(new ArrayDeque<>(List.of("a", "b")));
@@ -250,6 +318,13 @@ class ToolArgumentHasherTests {
         assertNull(exception.getCause());
     }
 
+    private void assertFixedFailureAtTopLevelAndNested(Object input) {
+        assertFixedFailure(input);
+        assertFixedFailure(Map.of("value", input));
+        assertFixedFailure(List.of(input));
+        assertFixedFailure(new RecordWithValue(input));
+    }
+
     private void assertSuccessfulHash(Object input) {
         assertEquals(64, hasher.hash(input).length());
     }
@@ -271,6 +346,9 @@ class ToolArgumentHasherTests {
     }
 
     private record RecordWithMap(Map<?, ?> values) {
+    }
+
+    private record RecordWithValue(Object value) {
     }
 
     private record ThrowingRecord(String secret) {
@@ -301,6 +379,55 @@ class ToolArgumentHasherTests {
         @Override
         public double doubleValue() {
             return 1.0;
+        }
+    }
+
+    private static final class CustomTextNode extends TextNode {
+
+        private CustomTextNode(String value) {
+            super(value);
+        }
+    }
+
+    private static final class CustomIntNode extends IntNode {
+
+        private CustomIntNode(int value) {
+            super(value);
+        }
+    }
+
+    private static final class MisreportingObjectNode extends ObjectNode {
+
+        private MisreportingObjectNode() {
+            super(JsonNodeFactory.instance);
+            put("value", 7);
+        }
+
+        /** 故意让已知大小与实际字段数不一致，验证子类不能绕过预分配保护。 */
+        @Override
+        public int size() {
+            return 0;
+        }
+    }
+
+    private static final class CustomArrayNode extends ArrayNode {
+
+        private CustomArrayNode() {
+            super(JsonNodeFactory.instance);
+        }
+    }
+
+    private static final class CustomBigInteger extends BigInteger {
+
+        private CustomBigInteger(String value) {
+            super(value);
+        }
+    }
+
+    private static final class CustomBigDecimal extends BigDecimal {
+
+        private CustomBigDecimal(String value) {
+            super(value);
         }
     }
 }

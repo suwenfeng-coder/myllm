@@ -8,7 +8,17 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.BigIntegerNode;
+import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.DecimalNode;
+import com.fasterxml.jackson.databind.node.DoubleNode;
+import com.fasterxml.jackson.databind.node.FloatNode;
+import com.fasterxml.jackson.databind.node.IntNode;
+import com.fasterxml.jackson.databind.node.LongNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ShortNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Array;
@@ -195,15 +205,23 @@ public class ToolArgumentHasher {
             int depth,
             NodeBudget budget,
             IdentityHashMap<Object, Boolean> path) throws IOException, ReflectiveOperationException {
-        if (node.isNull()) {
+        Class<?> nodeType = node.getClass();
+        if (nodeType == NullNode.class) {
             generator.writeNull();
-        } else if (node.isTextual()) {
+        } else if (nodeType == TextNode.class) {
             generator.writeString(node.textValue());
-        } else if (node.isBoolean()) {
+        } else if (nodeType == BooleanNode.class) {
             generator.writeBoolean(node.booleanValue());
-        } else if (node.isNumber()) {
+        } else if (nodeType == ShortNode.class
+                || nodeType == IntNode.class
+                || nodeType == LongNode.class
+                || nodeType == BigIntegerNode.class
+                || nodeType == FloatNode.class
+                || nodeType == DoubleNode.class
+                || nodeType == DecimalNode.class) {
             writeNumber(generator, node.numberValue());
-        } else if (node instanceof ObjectNode objectNode) {
+        } else if (nodeType == ObjectNode.class) {
+            ObjectNode objectNode = (ObjectNode) node;
             budget.ensureChildren(objectNode.size());
             enterPath(objectNode, path);
             try {
@@ -218,7 +236,8 @@ public class ToolArgumentHasher {
             } finally {
                 path.remove(objectNode);
             }
-        } else if (node instanceof ArrayNode arrayNode) {
+        } else if (nodeType == ArrayNode.class) {
+            ArrayNode arrayNode = (ArrayNode) node;
             budget.ensureChildren(arrayNode.size());
             enterPath(arrayNode, path);
             try {
@@ -236,18 +255,21 @@ public class ToolArgumentHasher {
     }
 
     private static void writeNumber(JsonGenerator generator, Number number) throws IOException {
-        if (number instanceof Byte || number instanceof Short || number instanceof Integer) {
+        Class<?> numberType = number.getClass();
+        if (numberType == Byte.class || numberType == Short.class || numberType == Integer.class) {
             generator.writeNumber(number.intValue());
-        } else if (number instanceof Long) {
+        } else if (numberType == Long.class) {
             generator.writeNumber(number.longValue());
-        } else if (number instanceof BigInteger bigInteger) {
-            generator.writeNumber(bigInteger);
-        } else if (number instanceof Float floatValue && Float.isFinite(floatValue)) {
+        } else if (numberType == BigInteger.class) {
+            generator.writeNumber((BigInteger) number);
+        } else if (numberType == Float.class && Float.isFinite((Float) number)) {
+            Float floatValue = (Float) number;
             generator.writeNumber(floatValue);
-        } else if (number instanceof Double doubleValue && Double.isFinite(doubleValue)) {
+        } else if (numberType == Double.class && Double.isFinite((Double) number)) {
+            Double doubleValue = (Double) number;
             generator.writeNumber(doubleValue);
-        } else if (number instanceof BigDecimal bigDecimal) {
-            generator.writeNumber(bigDecimal);
+        } else if (numberType == BigDecimal.class) {
+            generator.writeNumber((BigDecimal) number);
         } else {
             throw new HashingFailure();
         }

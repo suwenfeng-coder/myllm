@@ -58,8 +58,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.example.myllm.harness.domain.HarnessDomainException;
 import com.example.myllm.harness.domain.HarnessErrorCode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.BigIntegerNode;
+import com.fasterxml.jackson.databind.node.DecimalNode;
+import com.fasterxml.jackson.databind.node.DoubleNode;
+import com.fasterxml.jackson.databind.node.FloatNode;
+import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ShortNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -68,6 +77,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class ToolArgumentHasherTests {
@@ -149,6 +159,66 @@ class ToolArgumentHasherTests {
     }
 
     @Test
+    @DisplayName("Jackson 标准数值节点具体类型与对应 Java 数值生成相同哈希")
+    void hashesEveryAllowedStandardNumericNodeLikeItsJavaNumber() {
+        assertEquals(hasher.hash((short) 7), hasher.hash(ShortNode.valueOf((short) 7)));
+        assertEquals(hasher.hash(7), hasher.hash(IntNode.valueOf(7)));
+        assertEquals(hasher.hash(7L), hasher.hash(LongNode.valueOf(7L)));
+        assertEquals(
+                hasher.hash(BigInteger.valueOf(7L)),
+                hasher.hash(BigIntegerNode.valueOf(BigInteger.valueOf(7L))));
+        assertEquals(hasher.hash(1.25F), hasher.hash(FloatNode.valueOf(1.25F)));
+        assertEquals(hasher.hash(1.25D), hasher.hash(DoubleNode.valueOf(1.25D)));
+        assertEquals(
+                hasher.hash(new BigDecimal("1.25")),
+                hasher.hash(DecimalNode.valueOf(new BigDecimal("1.25"))));
+    }
+
+    @Test
+    @DisplayName("自定义 TextNode 在顶层和嵌套入口均固定失败")
+    void rejectsCustomTextNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new CustomTextNode("密钥-不得泄露"));
+    }
+
+    @Test
+    @DisplayName("自定义数值节点在顶层和嵌套入口均固定失败")
+    void rejectsCustomNumericNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new CustomIntNode(7));
+    }
+
+    @Test
+    @DisplayName("自定义 ObjectNode 在顶层和嵌套入口均固定失败")
+    void rejectsCustomObjectNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new MisreportingObjectNode());
+    }
+
+    @Test
+    @DisplayName("自定义 ArrayNode 在顶层和嵌套入口均固定失败")
+    void rejectsCustomArrayNodeAtTopLevelAndNestedEntrypoints() {
+        assertFixedFailureAtTopLevelAndNested(new CustomArrayNode());
+    }
+
+    @Test
+    @DisplayName("BigInteger 子类在顶层和 Map、Record 嵌套入口均固定失败")
+    void rejectsBigIntegerSubclassAtTopLevelAndNestedEntrypoints() {
+        CustomBigInteger input = new CustomBigInteger("7");
+
+        assertFixedFailure(input);
+        assertFixedFailure(Map.of("value", input));
+        assertFixedFailure(new RecordWithValue(input));
+    }
+
+    @Test
+    @DisplayName("BigDecimal 子类在顶层和 Map、Record 嵌套入口均固定失败")
+    void rejectsBigDecimalSubclassAtTopLevelAndNestedEntrypoints() {
+        CustomBigDecimal input = new CustomBigDecimal("1.25");
+
+        assertFixedFailure(input);
+        assertFixedFailure(Map.of("value", input));
+        assertFixedFailure(new RecordWithValue(input));
+    }
+
+    @Test
     void rejectsUnsupportedValuesWithFixedFailure() {
         assertFixedFailure(Map.of(1, "value"));
         assertFixedFailure(Double.NaN);
@@ -209,6 +279,13 @@ class ToolArgumentHasherTests {
         assertNull(exception.getCause());
     }
 
+    private void assertFixedFailureAtTopLevelAndNested(Object input) {
+        assertFixedFailure(input);
+        assertFixedFailure(Map.of("value", input));
+        assertFixedFailure(List.of(input));
+        assertFixedFailure(new RecordWithValue(input));
+    }
+
     private enum Status {
         READY
     }
@@ -217,6 +294,9 @@ class ToolArgumentHasherTests {
     }
 
     private record RecordWithMap(Map<?, ?> values) {
+    }
+
+    private record RecordWithValue(Object value) {
     }
 
     private record ThrowingRecord(String secret) {
@@ -249,6 +329,55 @@ class ToolArgumentHasherTests {
             return 1.0;
         }
     }
+
+    private static final class CustomTextNode extends TextNode {
+
+        private CustomTextNode(String value) {
+            super(value);
+        }
+    }
+
+    private static final class CustomIntNode extends IntNode {
+
+        private CustomIntNode(int value) {
+            super(value);
+        }
+    }
+
+    private static final class MisreportingObjectNode extends ObjectNode {
+
+        private MisreportingObjectNode() {
+            super(JsonNodeFactory.instance);
+            put("value", 7);
+        }
+
+        /** 故意让已知大小与实际字段数不一致，验证子类不能绕过预分配保护。 */
+        @Override
+        public int size() {
+            return 0;
+        }
+    }
+
+    private static final class CustomArrayNode extends ArrayNode {
+
+        private CustomArrayNode() {
+            super(JsonNodeFactory.instance);
+        }
+    }
+
+    private static final class CustomBigInteger extends BigInteger {
+
+        private CustomBigInteger(String value) {
+            super(value);
+        }
+    }
+
+    private static final class CustomBigDecimal extends BigDecimal {
+
+        private CustomBigDecimal(String value) {
+            super(value);
+        }
+    }
 }
 ```
 
@@ -277,7 +406,17 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.BigIntegerNode;
+import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.DecimalNode;
+import com.fasterxml.jackson.databind.node.DoubleNode;
+import com.fasterxml.jackson.databind.node.FloatNode;
+import com.fasterxml.jackson.databind.node.IntNode;
+import com.fasterxml.jackson.databind.node.LongNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ShortNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Array;
@@ -464,15 +603,23 @@ public class ToolArgumentHasher {
             int depth,
             NodeBudget budget,
             IdentityHashMap<Object, Boolean> path) throws IOException, ReflectiveOperationException {
-        if (node.isNull()) {
+        Class<?> nodeType = node.getClass();
+        if (nodeType == NullNode.class) {
             generator.writeNull();
-        } else if (node.isTextual()) {
+        } else if (nodeType == TextNode.class) {
             generator.writeString(node.textValue());
-        } else if (node.isBoolean()) {
+        } else if (nodeType == BooleanNode.class) {
             generator.writeBoolean(node.booleanValue());
-        } else if (node.isNumber()) {
+        } else if (nodeType == ShortNode.class
+                || nodeType == IntNode.class
+                || nodeType == LongNode.class
+                || nodeType == BigIntegerNode.class
+                || nodeType == FloatNode.class
+                || nodeType == DoubleNode.class
+                || nodeType == DecimalNode.class) {
             writeNumber(generator, node.numberValue());
-        } else if (node instanceof ObjectNode objectNode) {
+        } else if (nodeType == ObjectNode.class) {
+            ObjectNode objectNode = (ObjectNode) node;
             budget.ensureChildren(objectNode.size());
             enterPath(objectNode, path);
             try {
@@ -487,7 +634,8 @@ public class ToolArgumentHasher {
             } finally {
                 path.remove(objectNode);
             }
-        } else if (node instanceof ArrayNode arrayNode) {
+        } else if (nodeType == ArrayNode.class) {
+            ArrayNode arrayNode = (ArrayNode) node;
             budget.ensureChildren(arrayNode.size());
             enterPath(arrayNode, path);
             try {
@@ -505,18 +653,21 @@ public class ToolArgumentHasher {
     }
 
     private static void writeNumber(JsonGenerator generator, Number number) throws IOException {
-        if (number instanceof Byte || number instanceof Short || number instanceof Integer) {
+        Class<?> numberType = number.getClass();
+        if (numberType == Byte.class || numberType == Short.class || numberType == Integer.class) {
             generator.writeNumber(number.intValue());
-        } else if (number instanceof Long) {
+        } else if (numberType == Long.class) {
             generator.writeNumber(number.longValue());
-        } else if (number instanceof BigInteger bigInteger) {
-            generator.writeNumber(bigInteger);
-        } else if (number instanceof Float floatValue && Float.isFinite(floatValue)) {
+        } else if (numberType == BigInteger.class) {
+            generator.writeNumber((BigInteger) number);
+        } else if (numberType == Float.class && Float.isFinite((Float) number)) {
+            Float floatValue = (Float) number;
             generator.writeNumber(floatValue);
-        } else if (number instanceof Double doubleValue && Double.isFinite(doubleValue)) {
+        } else if (numberType == Double.class && Double.isFinite((Double) number)) {
+            Double doubleValue = (Double) number;
             generator.writeNumber(doubleValue);
-        } else if (number instanceof BigDecimal bigDecimal) {
-            generator.writeNumber(bigDecimal);
+        } else if (numberType == BigDecimal.class) {
+            generator.writeNumber((BigDecimal) number);
         } else {
             throw new HashingFailure();
         }
@@ -1107,25 +1258,41 @@ rg -n "String\.valueOf\(input\)|hashInput\(" \
 
 ```bash
 git status --short
-git diff --stat 34e86fc..HEAD
-git diff --name-only 34e86fc..HEAD
-git diff --diff-filter=D --name-only 34e86fc..HEAD
+git diff --stat 0f2c22b..HEAD
+git diff --name-only 0f2c22b..HEAD
+git diff --diff-filter=D --name-only 0f2c22b..HEAD
 ```
 
-预期：该范围只包含本计划、Hasher、Executor 及对应测试；最后一条无输出。不得出现 Parser、工具输入
-Record、实体、DDL、迁移脚本或文件删除。
+预期：最终验收修复范围只包含本计划、Hasher、Executor 和 Hasher 测试；最后一条无输出。不得出现 Parser、
+工具输入 Record、实体、DDL、迁移脚本或文件删除。
 
 - [x] **步骤 5：执行最终代码审查**
 
 审查时逐项核对设计文档的等价边界、安全上限、固定失败、单次哈希、临时调用兼容性和禁止范围。严重或重要
 问题必须修复并重新运行覆盖测试；次要问题记录在交付说明。
 
-**实施结果（2026-07-11）：** `make verify` 退出码为 0，Surefire 实际汇总为 177 个测试、0 失败、0 错误、
-0 跳过，文档链接检查输出 `All doc links OK`。`ToolExecutor` 旧参数哈希静态扫描无匹配，差异格式检查通过；
-`34e86fc..HEAD` 范围仅包含本计划、`ToolArgumentHasher`、`ToolExecutor`、两组对应测试，以及为新增构造依赖
-补充 `ToolArgumentHasher.class` 的 `HarnessOrchestratorReplayTests` 单行测试装配修复，不含 Parser、工具输入
-Record、实体、DDL、迁移脚本或文件删除。最终审查覆盖等价边界、固定安全上限、固定失败、单次哈希复用和
-临时调用兼容性，未发现 Critical、Important 或 Minor 问题。
+**最终验收修复结果（2026-07-11，基线 `0f2c22b`）：** 最终审查实际发现并已关闭两项 Important 和一项
+Minor：
+
+1. Important：原 `writeJsonNode` 在精确类型判断前调用 `isTextual`、`isNumber` 等节点行为，并用可接受子类的
+   ObjectNode/ArrayNode 类型匹配；自定义容器还能让 `size` 与实际遍历结果不一致，绕过预分配保护。现改为先
+   读取 `node.getClass()`，只允许十二种标准具体节点类，再调用对应节点行为。
+2. Important：原 `writeNumber` 用 `instanceof BigInteger/BigDecimal` 接受两个非 final 类的未知子类。现改为
+   对 Byte、Short、Integer、Long、BigInteger、Float、Double、BigDecimal 八种具体类执行精确类判断，继续
+   固定拒绝非有限 Float、Double。
+3. Minor：`ToolExecutor` 执行顺序 Javadoc 漏写风险策略校验后、幂等查询前的“持久化路径参数规范化哈希”。
+   文档顺序已补齐，执行代码未改变。
+
+严格 TDD 的 RED 命令 `mvn -q -Dtest=ToolArgumentHasherTests test` 实际得到 22 个测试、6 个失败、0 个错误；
+六项失败均为当前实现没有抛出固定 `HarnessDomainException`，分别覆盖自定义 TextNode、IntNode、ObjectNode、
+ArrayNode 以及 BigInteger、BigDecimal 子类。最小生产修复后，同一命令 GREEN，随后
+`mvn -q -Dtest=ToolArgumentHasherTests,ToolExecutorTests test` 退出码为 0。
+
+最终 `make verify` 退出码为 0，Surefire 汇总为 184 个测试、0 失败、0 错误、0 跳过，文档链接检查输出
+`All doc links OK`。`git diff --check` 无输出，旧参数哈希和旧 JsonNode/Number 白名单扫描均无匹配；
+`0f2c22b..HEAD` 仅包含本计划、`ToolArgumentHasher`、`ToolExecutor` 和 `ToolArgumentHasherTests`，没有删除文件。
+自审确认：自定义子类在顶层和 Map/List/Record 嵌套入口均固定失败，标准节点仍与等价 Java 值产生相同哈希，
+异常保持固定中文消息、无 cause、无原始值，Executor 行为由原集成测试保持不变。
 
 - [x] **步骤 6：提交实施计划完成状态**
 
