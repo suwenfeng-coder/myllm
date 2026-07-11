@@ -265,11 +265,6 @@ public class FileEmbeddingService {
             throw e;
         }
 
-        String headingSample = chunks.stream()
-                .map(DocumentChunk::headingPath)
-                .filter(path -> path != null && !path.isBlank())
-                .findFirst()
-                .orElse("(none)");
         boolean graphIndexEnqueued = enqueueGraphIndex(fileId, fileName);
         String completionMessage = graphIndexEnqueued
                 ? "文件已完成向量化；Neo4j 构图任务已入队"
@@ -289,14 +284,16 @@ public class FileEmbeddingService {
                 embeddingDurationMs,
                 pipelineDurationMs);
         if (log.isInfoEnabled()) {
-            log.info("文件清理及向量化完成 fileName={} fileId={} parseMode={} parserEngine={} contentType={} cleanerVersion={} requestedStrategy={} appliedStrategy={} rawChars={} cleanedChars={} removalRatio={} duplicateBlocks={} chunks={} dimension={} headingSample={} parseDurationMs={} storingMs={} cleaningMs={} chunkingMs={} embeddingMs={} pipelineMs={} warnings={} graphEnqueued={}",
-                    fileName, fileId, parseResult.parseMode(), parseResult.parserEngine(), contentType,
-                    cleaningReport.cleanerVersion(), chunkingResult.requestedStrategy().apiValue(),
-                    chunkingResult.appliedStrategy().apiValue(), cleaningReport.rawCharCount(),
-                    cleaningReport.cleanedCharCount(), String.format("%.3f", cleaningReport.removalRatio()),
-                    cleaningReport.removedDuplicateBlocks(), chunks.size(), embeddingDimension, headingSample,
-                    parseResult.parseDurationMs(), storingDurationMs, cleaningDurationMs, chunkingDurationMs,
-                    embeddingDurationMs, pipelineDurationMs, cleaningReport.warnings(), graphIndexEnqueued);
+            log.info("文件清理及向量化完成 fileId={} parseMode={} cleanerVersion={} requestedStrategy={} appliedStrategy={} rawChars={} cleanedChars={} removalRatio={} duplicateBlocks={} chunks={} dimension={} parseDurationMs={} storingMs={} cleaningMs={} chunkingMs={} embeddingMs={} pipelineMs={} graphEnqueued={}",
+                    fileId, parseResult.parseMode(), cleaningReport.cleanerVersion(),
+                    chunkingResult.requestedStrategy().apiValue(),
+                    chunkingResult.appliedStrategy().apiValue(),
+                    cleaningReport.rawCharCount(), cleaningReport.cleanedCharCount(),
+                    String.format("%.3f", cleaningReport.removalRatio()),
+                    cleaningReport.removedDuplicateBlocks(), chunks.size(), embeddingDimension,
+                    parseResult.parseDurationMs(), storingDurationMs, cleaningDurationMs,
+                    chunkingDurationMs, embeddingDurationMs, pipelineDurationMs,
+                    graphIndexEnqueued);
         }
         FileEmbeddingResponse response = new FileEmbeddingResponse(
                 fileId,
