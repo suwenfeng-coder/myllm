@@ -81,10 +81,11 @@ class DocumentStorageServiceTests {
     void rejectsUnsafeFileIdBeforeAnyStorageCall() {
         MockMultipartFile file = sampleFile();
         DocumentParseResult parseResult = sampleParseResult();
+        ParsedDocument document = parseResult.document();
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.store("../shared", "report.pdf", file, parseResult.document(), parseResult));
+                () -> service.store("../shared", "report.pdf", file, document, parseResult));
 
         verifyNoInteractions(minioStorageService, repository);
     }

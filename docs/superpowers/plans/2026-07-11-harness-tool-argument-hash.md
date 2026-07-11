@@ -260,9 +260,11 @@ class ToolArgumentHasherTests {
 
     @Test
     void rejectsThrowingRecordWithoutLeakingSecret() {
+        ThrowingRecord input = new ThrowingRecord("密钥-不得泄露");
+
         HarnessDomainException exception = assertThrows(
                 HarnessDomainException.class,
-                () -> hasher.hash(new ThrowingRecord("密钥-不得泄露")));
+                () -> hasher.hash(input));
 
         assertEquals(HarnessErrorCode.VALIDATION_FAILED, exception.getErrorCode());
         assertEquals("工具参数无法安全规范化", exception.getMessage());
@@ -586,27 +588,27 @@ public class ToolArgumentHasher {
 
     private static void writeRecord(
             JsonGenerator generator,
-            Object record,
+            Object recordValue,
             int depth,
             NodeBudget budget,
             IdentityHashMap<Object, Boolean> path) throws ReflectiveOperationException, IOException {
-        RecordComponent[] components = record.getClass().getRecordComponents();
+        RecordComponent[] components = recordValue.getClass().getRecordComponents();
         budget.ensureChildren(components.length);
         Arrays.sort(components, Comparator.comparing(RecordComponent::getName));
-        enterPath(record, path);
+        enterPath(recordValue, path);
         try {
             generator.writeStartObject();
             for (RecordComponent component : components) {
                 Method accessor = component.getAccessor();
-                if (!accessor.canAccess(record) && !accessor.trySetAccessible()) {
+                if (!accessor.canAccess(recordValue) && !accessor.trySetAccessible()) {
                     throw new HashingFailure();
                 }
                 generator.writeFieldName(component.getName());
-                writeValue(generator, accessor.invoke(record), depth + 1, budget, path);
+                writeValue(generator, accessor.invoke(recordValue), depth + 1, budget, path);
             }
             generator.writeEndObject();
         } finally {
-            path.remove(record);
+            path.remove(recordValue);
         }
     }
 
@@ -1069,11 +1071,12 @@ void hashFailureHappensBeforeRepositoryAndToolExecution() {
             "knowledge-assistant", 1, "hash", RunType.AGENT_LOOP, "obj", "req-hash-failure", null, null, 8));
     ToolExecutionContext context = new ToolExecutionContext(
             run.getRunId(), null, "explicit-failure", Set.of(TestConfig.HASH_FAILURE_TEST));
+    HashFailureInput input = new HashFailureInput();
     clearInvocations(toolCallRepository);
 
     HarnessDomainException exception = assertThrows(
             HarnessDomainException.class,
-            () -> toolExecutor.execute(context, TestConfig.HASH_FAILURE_TEST, new HashFailureInput()));
+            () -> toolExecutor.execute(context, TestConfig.HASH_FAILURE_TEST, input));
 
     assertEquals(HarnessErrorCode.VALIDATION_FAILED, exception.getErrorCode());
     assertEquals("工具参数无法安全规范化", exception.getMessage());

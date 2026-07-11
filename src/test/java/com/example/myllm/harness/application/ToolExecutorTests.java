@@ -171,11 +171,12 @@ class ToolExecutorTests {
                 "knowledge-assistant", 1, "hash", RunType.AGENT_LOOP, "obj", "req-hash-failure", null, null, 8));
         ToolExecutionContext context = new ToolExecutionContext(
                 run.getRunId(), null, "explicit-failure", Set.of(TestConfig.HASH_FAILURE_TEST));
+        HashFailureInput input = new HashFailureInput();
         clearInvocations(toolCallRepository);
 
         HarnessDomainException exception = assertThrows(
                 HarnessDomainException.class,
-                () -> toolExecutor.execute(context, TestConfig.HASH_FAILURE_TEST, new HashFailureInput()));
+                () -> toolExecutor.execute(context, TestConfig.HASH_FAILURE_TEST, input));
 
         assertEquals(HarnessErrorCode.VALIDATION_FAILED, exception.getErrorCode());
         assertEquals("工具参数无法安全规范化", exception.getMessage());

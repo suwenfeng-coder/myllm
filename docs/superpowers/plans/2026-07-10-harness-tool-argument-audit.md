@@ -151,7 +151,7 @@ private static boolean isDynamicObjectType(JavaType declaredType)
 基础实现规则：
 
 - `Map` 转具体声明类型使用 `objectMapper.convertValue(input, declaredInputType)`。
-- 文本节点只写 `type=string` 和 `length`。
+- 文本类型统一复用 `TYPE_STRING`，摘要 JSON 仍只写 `type=string` 和 `length`。
 - 数字、布尔节点只写类型。
 - 数组只写 `count` 及去重、排序后的 `elementTypes`。
 - 声明类型为 `Map` 或 `Object` 的对象节点只写 `fieldCount`。
@@ -243,6 +243,7 @@ private static final int MAX_DEPTH = 4;
 private static final int MAX_FIELDS = 32;
 private static final int MAX_ELEMENT_TYPES = 8;
 private static final int MAX_JSON_BYTES = 4096;
+private static final String TYPE_STRING = "string";
 private static final String SAFE_FALLBACK_JSON =
         "{\"schemaVersion\":1,\"summary\":{\"type\":\"unavailable\"}}";
 ```

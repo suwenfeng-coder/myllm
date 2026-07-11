@@ -175,27 +175,27 @@ public class ToolArgumentHasher {
 
     private static void writeRecord(
             JsonGenerator generator,
-            Object record,
+            Object recordValue,
             int depth,
             NodeBudget budget,
             IdentityHashMap<Object, Boolean> path) throws ReflectiveOperationException, IOException {
-        RecordComponent[] components = record.getClass().getRecordComponents();
+        RecordComponent[] components = recordValue.getClass().getRecordComponents();
         budget.ensureChildren(components.length);
         Arrays.sort(components, Comparator.comparing(RecordComponent::getName));
-        enterPath(record, path);
+        enterPath(recordValue, path);
         try {
             generator.writeStartObject();
             for (RecordComponent component : components) {
                 Method accessor = component.getAccessor();
-                if (!accessor.canAccess(record) && !accessor.trySetAccessible()) {
+                if (!accessor.canAccess(recordValue) && !accessor.trySetAccessible()) {
                     throw new HashingFailure();
                 }
                 generator.writeFieldName(component.getName());
-                writeValue(generator, accessor.invoke(record), depth + 1, budget, path);
+                writeValue(generator, accessor.invoke(recordValue), depth + 1, budget, path);
             }
             generator.writeEndObject();
         } finally {
-            path.remove(record);
+            path.remove(recordValue);
         }
     }
 

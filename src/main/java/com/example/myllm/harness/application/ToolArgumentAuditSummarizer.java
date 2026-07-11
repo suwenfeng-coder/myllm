@@ -25,6 +25,7 @@ public class ToolArgumentAuditSummarizer {
     private static final int MAX_FIELDS = 32;
     private static final int MAX_ELEMENT_TYPES = 8;
     private static final int MAX_JSON_BYTES = 4096;
+    private static final String TYPE_STRING = "string";
     private static final String SAFE_FALLBACK_JSON =
             "{\"schemaVersion\":1,\"summary\":{\"type\":\"unavailable\"}}";
 
@@ -81,7 +82,7 @@ public class ToolArgumentAuditSummarizer {
             return typeNode("null");
         }
         if (value.isTextual()) {
-            ObjectNode summary = typeNode("string");
+            ObjectNode summary = typeNode(TYPE_STRING);
             summary.put("length", value.textValue().length());
             return summary;
         }
@@ -97,7 +98,7 @@ public class ToolArgumentAuditSummarizer {
         if (value.isObject()) {
             return summarizeObject(declaredType, value, depth);
         }
-        ObjectNode summary = typeNode("string");
+        ObjectNode summary = typeNode(TYPE_STRING);
         summary.put("length", value.asText().length());
         return summary;
     }
@@ -153,7 +154,7 @@ public class ToolArgumentAuditSummarizer {
             return "null";
         }
         if (value.isTextual()) {
-            return "string";
+            return TYPE_STRING;
         }
         if (value.isNumber()) {
             return "number";
@@ -167,7 +168,7 @@ public class ToolArgumentAuditSummarizer {
         if (value.isObject()) {
             return "object";
         }
-        return "string";
+        return TYPE_STRING;
     }
 
     private static boolean isDynamicObjectType(JavaType declaredType) {

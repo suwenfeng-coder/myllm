@@ -299,9 +299,11 @@ class ToolArgumentHasherTests {
 
     @Test
     void rejectsThrowingRecordWithoutLeakingSecret() {
+        ThrowingRecord input = new ThrowingRecord("密钥-不得泄露");
+
         HarnessDomainException exception = assertThrows(
                 HarnessDomainException.class,
-                () -> hasher.hash(new ThrowingRecord("密钥-不得泄露")));
+                () -> hasher.hash(input));
 
         assertEquals(HarnessErrorCode.VALIDATION_FAILED, exception.getErrorCode());
         assertEquals("工具参数无法安全规范化", exception.getMessage());
