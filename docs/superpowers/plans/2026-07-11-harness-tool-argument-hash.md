@@ -42,7 +42,7 @@
 - 错误：只抛出固定 `HarnessDomainException`，错误码为 `VALIDATION_FAILED`。
 - 不依赖：应用共享 `ObjectMapper`、工具声明类型、Repository 或配置文件。
 
-- [ ] **步骤 1：先写完整的规范化哈希失败测试**
+- [x] **步骤 1：先写完整的规范化哈希失败测试**
 
 创建 `ToolArgumentHasherTests.java`，写入以下测试类：
 
@@ -252,7 +252,7 @@ class ToolArgumentHasherTests {
 }
 ```
 
-- [ ] **步骤 2：运行测试并确认按预期失败**
+- [x] **步骤 2：运行测试并确认按预期失败**
 
 运行：
 
@@ -262,7 +262,7 @@ mvn -q -Dtest=ToolArgumentHasherTests test
 
 预期：测试编译失败，明确提示 `ToolArgumentHasher` 不存在。不得先创建空壳类绕过红灯。
 
-- [ ] **步骤 3：实现固定输入域、流式规范 JSON 和 SHA-256**
+- [x] **步骤 3：实现固定输入域、流式规范 JSON 和 SHA-256**
 
 创建 `ToolArgumentHasher.java`，写入：
 
@@ -585,7 +585,7 @@ public class ToolArgumentHasher {
 }
 ```
 
-- [ ] **步骤 4：运行单元测试并确认全部通过**
+- [x] **步骤 4：运行单元测试并确认全部通过**
 
 运行：
 
@@ -595,7 +595,7 @@ mvn -q -Dtest=ToolArgumentHasherTests test
 
 预期：所有 `ToolArgumentHasherTests` 通过；固定向量精确匹配，失败信封不包含秘密值。
 
-- [ ] **步骤 5：提交任务 1**
+- [x] **步骤 5：提交任务 1**
 
 ```bash
 git add src/main/java/com/example/myllm/harness/application/ToolArgumentHasher.java \
@@ -619,7 +619,7 @@ git commit -m "安全：实现工具参数规范化哈希"
 - 保持：显式幂等键只做 `trim()`；无 `runId` 不写审计。
 - 产出：`createAuditRecord` 接收已计算的 `argumentsHash`，不再自行计算。
 
-- [ ] **步骤 1：增加计数 Hasher、Repository Spy 和测试工具**
+- [x] **步骤 1：增加计数 Hasher、Repository Spy 和测试工具**
 
 修改 `ToolExecutorTests` 导入：
 
@@ -848,7 +848,7 @@ static class HashFailureTestTool implements HarnessTool<HashFailureInput, String
 new AuditFailureInput("触发固定摘要")
 ```
 
-- [ ] **步骤 2：先写 ToolExecutor 集成失败测试**
+- [x] **步骤 2：先写 ToolExecutor 集成失败测试**
 
 在 `ToolExecutorTests` 增加以下测试，并在现有 `executesAllowedToolAndPersistsAudit` 末尾增加单次哈希断言：
 
@@ -940,7 +940,7 @@ assertEquals(1, argumentHasher.calls());
 assertEquals(argumentHasher.lastHash(), toolCallRepository.findAll().get(0).getArgumentsHash());
 ```
 
-- [ ] **步骤 3：运行集成测试并确认按预期失败**
+- [x] **步骤 3：运行集成测试并确认按预期失败**
 
 运行：
 
@@ -950,7 +950,7 @@ mvn -q -Dtest=ToolExecutorTests test
 
 预期：至少出现以下失败：计数 Hasher 调用次数为 0；字段顺序不同的自动键产生两条调用；规范化失败输入仍进入 Repository 或工具执行。现有审计摘要、结果大小和显式重放测试继续编译。
 
-- [ ] **步骤 4：修改 ToolExecutor 只计算并复用一次哈希**
+- [x] **步骤 4：修改 ToolExecutor 只计算并复用一次哈希**
 
 在字段与构造函数中加入依赖：
 
@@ -1045,7 +1045,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 ```
 
-- [ ] **步骤 5：运行定向测试并确认全部通过**
+- [x] **步骤 5：运行定向测试并确认全部通过**
 
 运行：
 
@@ -1055,7 +1055,7 @@ mvn -q -Dtest=ToolArgumentHasherTests,ToolExecutorTests test
 
 预期：规范化哈希单元测试和 ToolExecutor JPA 测试全部通过；自动键两次调用只执行工具一次，持久化调用每次只哈希一次，无 `runId` 调用哈希零次。
 
-- [ ] **步骤 6：提交任务 2**
+- [x] **步骤 6：提交任务 2**
 
 ```bash
 git add src/main/java/com/example/myllm/harness/application/ToolExecutor.java \
@@ -1076,7 +1076,7 @@ git commit -m "安全：接入工具参数规范化哈希"
 - 复核：`docs/superpowers/specs/2026-07-11-harness-tool-argument-hash-design.md`
 - 复核：`docs/superpowers/plans/2026-07-11-harness-tool-argument-hash.md`
 
-- [ ] **步骤 1：执行完整仓库验证**
+- [x] **步骤 1：执行完整仓库验证**
 
 ```bash
 make verify
@@ -1084,7 +1084,7 @@ make verify
 
 预期：全部 Maven 测试通过，文档链接检查输出 `All doc links OK`。
 
-- [ ] **步骤 2：统计测试结果并确认没有跳过或失败**
+- [x] **步骤 2：统计测试结果并确认没有跳过或失败**
 
 ```bash
 perl -ne 'if (/<testsuite /) { /tests="(\d+)"/ and $t += $1; /failures="(\d+)"/ and $f += $1; /errors="(\d+)"/ and $e += $1; /skipped="(\d+)"/ and $s += $1 } END { print "tests=$t failures=$f errors=$e skipped=$s\n" }' \
@@ -1093,7 +1093,7 @@ perl -ne 'if (/<testsuite /) { /tests="(\d+)"/ and $t += $1; /failures="(\d+)"/ 
 
 预期：`failures=0 errors=0 skipped=0`。
 
-- [ ] **步骤 3：执行静态安全检查**
+- [x] **步骤 3：执行静态安全检查**
 
 ```bash
 git diff --check
@@ -1103,7 +1103,7 @@ rg -n "String\.valueOf\(input\)|hashInput\(" \
 
 预期：`git diff --check` 无输出；旧参数哈希实现无匹配。
 
-- [ ] **步骤 4：确认最终变更范围**
+- [x] **步骤 4：确认最终变更范围**
 
 ```bash
 git status --short
@@ -1115,12 +1115,19 @@ git diff --diff-filter=D --name-only 34e86fc..HEAD
 预期：该范围只包含本计划、Hasher、Executor 及对应测试；最后一条无输出。不得出现 Parser、工具输入
 Record、实体、DDL、迁移脚本或文件删除。
 
-- [ ] **步骤 5：执行最终代码审查**
+- [x] **步骤 5：执行最终代码审查**
 
 审查时逐项核对设计文档的等价边界、安全上限、固定失败、单次哈希、临时调用兼容性和禁止范围。严重或重要
 问题必须修复并重新运行覆盖测试；次要问题记录在交付说明。
 
-- [ ] **步骤 6：提交实施计划完成状态**
+**实施结果（2026-07-11）：** `make verify` 退出码为 0，Surefire 实际汇总为 177 个测试、0 失败、0 错误、
+0 跳过，文档链接检查输出 `All doc links OK`。`ToolExecutor` 旧参数哈希静态扫描无匹配，差异格式检查通过；
+`34e86fc..HEAD` 范围仅包含本计划、`ToolArgumentHasher`、`ToolExecutor`、两组对应测试，以及为新增构造依赖
+补充 `ToolArgumentHasher.class` 的 `HarnessOrchestratorReplayTests` 单行测试装配修复，不含 Parser、工具输入
+Record、实体、DDL、迁移脚本或文件删除。最终审查覆盖等价边界、固定安全上限、固定失败、单次哈希复用和
+临时调用兼容性，未发现 Critical、Important 或 Minor 问题。
+
+- [x] **步骤 6：提交实施计划完成状态**
 
 在本计划中勾选已执行步骤，并将计划与最后一次必要修正一并提交；若代码提交后计划是唯一剩余变更，单独执行：
 
