@@ -1,20 +1,25 @@
 package com.example.myllm.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.example.myllm.config.DocForgeProperties;
 import com.example.myllm.support.document.DocumentBlock;
 import com.example.myllm.support.document.DocumentBlockType;
+import com.example.myllm.support.document.DocumentParseResult;
 import com.example.myllm.support.document.ParsedDocument;
 import com.example.myllm.support.docforge.DocForgeServiceException;
 import com.example.myllm.support.parser.DocForgeRemoteDocumentParser;
 import com.example.myllm.support.parser.LocalDocumentParser;
+import com.example.myllm.testing.LogCapture;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 
 class DocumentParseServiceTests {
 
@@ -49,6 +54,11 @@ class DocumentParseServiceTests {
             LocalDocumentParser localParser,
             List<com.example.myllm.support.document.DocumentParser> remoteParsers) {
         return createService(localParser, remoteParsers, 3);
+    }
+
+    private static void assertSingleLine(String message) {
+        assertFalse(message.contains("\r"), message);
+        assertFalse(message.contains("\n"), message);
     }
 
     @Test
@@ -225,5 +235,107 @@ class DocumentParseServiceTests {
 
         assertEquals("docling", result.parseMode());
         assertEquals(List.of("docling"), result.attemptedModes());
+    }
+
+    @Test
+    void autoParseSanitizesExtensionOnlyInLogs() {
+        String rawExtension = "safe\r\nforged";
+        AtomicReference<String> receivedExtension = new AtomicReference<>();
+        LocalDocumentParser localParser = new LocalDocumentParser() {
+            @Override
+            public boolean supports(String extension) {
+                receivedExtension.set(extension);
+                return true;
+            }
+
+            @Override
+            public ParsedDocument parse(MultipartFile file) {
+                return new ParsedDocument(
+                        file.getOriginalFilename(),
+                        List.of(new DocumentBlock(
+                                DocumentBlockType.PARAGRAPH, "content", null, 0)),
+                        Map.of("extension", receivedExtension.get()));
+            }
+        };
+        DocumentParseService service = createService(localParser, List.of());
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "report." + rawExtension,
+                "application/octet-stream",
+                "content".getBytes());
+
+        try (LogCapture logs = LogCapture.forClass(DocumentParseService.class)) {
+            DocumentParseResult result = service.parse(file, "auto");
+
+            assertEquals(rawExtension, receivedExtension.get());
+            assertEquals(rawExtension, result.document().metadata().get("extension"));
+            String success = logs.eventStartingWith("自动解析完成").getFormattedMessage();
+            assertEquals(
+                    "自动解析完成 requested=auto applied=local extension=safe__forged attempted=[local] fallbackReason=null",
+                    success);
+            assertSingleLine(success);
+        }
+    }
+
+    @Test
+    void autoParseSanitizesFailureLogsWithoutChangingFallbackReason() {
+        DocForgeRemoteDocumentParser makerParser =
+                new DocForgeRemoteDocumentParser(null, "maker", "maker") {
+                    @Override
+                    public boolean supports(String extension) {
+                        return "pdf".equals(extension);
+                    }
+
+                    @Override
+                    public ParsedDocument parse(MultipartFile file) {
+                        throw new DocForgeServiceException("maker model\r\nunavailable", 503);
+                    }
+                };
+        DocForgeRemoteDocumentParser doclingParser =
+                new DocForgeRemoteDocumentParser(null, "docling", "docling") {
+                    @Override
+                    public boolean supports(String extension) {
+                        return "pdf".equals(extension);
+                    }
+
+                    @Override
+                    public ParsedDocument parse(MultipartFile file) {
+                        return new ParsedDocument(
+                                "report.pdf",
+                                List.of(new DocumentBlock(
+                                        DocumentBlockType.PARAGRAPH,
+                                        "docling fallback",
+                                        null,
+                                        0)),
+                                Map.of(
+                                        "extension", "pdf",
+                                        "parser", "docling",
+                                        "parsePages", 4));
+                    }
+                };
+        DocumentParseService service =
+                createService(new LocalDocumentParser(), List.of(makerParser, doclingParser));
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "report.pdf", "application/pdf", "%PDF-1.4".getBytes());
+
+        try (LogCapture logs = LogCapture.forClass(DocumentParseService.class)) {
+            DocumentParseResult result = service.parse(file, "auto");
+
+            String rawFallbackReason = "maker: maker model\r\nunavailable";
+            assertEquals(rawFallbackReason, result.fallbackReason());
+            assertEquals(rawFallbackReason, result.document().metadata().get("parseFallbackReason"));
+
+            String warning = logs.eventStartingWith("自动解析候选失败").getFormattedMessage();
+            assertEquals(
+                    "自动解析候选失败，将尝试下一模式 mode=maker extension=pdf reason=maker model__unavailable",
+                    warning);
+            assertSingleLine(warning);
+
+            String success = logs.eventStartingWith("自动解析完成").getFormattedMessage();
+            assertEquals(
+                    "自动解析完成 requested=auto applied=docling extension=pdf attempted=[maker, docling] fallbackReason=maker: maker model__unavailable",
+                    success);
+            assertSingleLine(success);
+        }
     }
 }

@@ -231,16 +231,25 @@ public class DocumentParseService {
                 String fallbackReason = failures.isEmpty() ? null : String.join("; ", failures);
                 ParsedDocument enriched = enrichParseMetadata(
                         document, "auto", appliedMode, attempted, fallbackReason);
+
+                String loggedExtension = extension.replaceAll("[\\r\\n]", "_");
+                String loggedFallbackReason = fallbackReason == null
+                        ? null
+                        : fallbackReason.replaceAll("[\\r\\n]", "_");
                 log.info("自动解析完成 requested=auto applied={} extension={} attempted={} fallbackReason={}",
-                        appliedMode, extension, attempted, fallbackReason);
+                        appliedMode, loggedExtension, attempted, loggedFallbackReason);
+
                 return DocumentParseResult.from(
                         enriched, "auto", appliedMode, durationMs, attempted, fallbackReason);
             } catch (RuntimeException e) {
                 lastFailure = e;
-                failures.add(mode + ": " + conciseMessage(e));
+                String failureReason = conciseMessage(e);
+                failures.add(mode + ": " + failureReason);
                 if (log.isWarnEnabled()) {
+                    String loggedExtension = extension.replaceAll("[\\r\\n]", "_");
+                    String loggedFailureReason = failureReason.replaceAll("[\\r\\n]", "_");
                     log.warn("自动解析候选失败，将尝试下一模式 mode={} extension={} reason={}",
-                            mode, extension, conciseMessage(e));
+                            mode, loggedExtension, loggedFailureReason);
                 }
             }
         }
