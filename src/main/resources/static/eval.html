@@ -619,7 +619,10 @@
       const requestOptions = opts;
       const res = await fetch(path, {
         ...requestOptions,
-        headers: Object.assign({ 'Content-Type': 'application/json' }, requestOptions?.headers)
+        headers: {
+          'Content-Type': 'application/json',
+          ...requestOptions?.headers
+        }
       });
       if (res.ok) {
         if (res.status === 204) return null;
