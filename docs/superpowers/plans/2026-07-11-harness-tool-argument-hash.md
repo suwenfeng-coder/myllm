@@ -42,9 +42,9 @@
 - 错误：只抛出固定 `HarnessDomainException`，错误码为 `VALIDATION_FAILED`。
 - 不依赖：应用共享 `ObjectMapper`、工具声明类型、Repository 或配置文件。
 
-- [x] **步骤 1：先写完整的规范化哈希失败测试**
+- [x] **步骤 1：先写任务 1 初始 RED 测试子集**
 
-创建 `ToolArgumentHasherTests.java`，写入以下测试类：
+创建 `ToolArgumentHasherTests.java`，先写入以下任务 1 初始 RED 测试子集；该代码块不是最终完整快照：
 
 ```java
 package com.example.myllm.harness.application;
@@ -380,6 +380,19 @@ class ToolArgumentHasherTests {
     }
 }
 ```
+
+后续审查继续在
+[最终 `ToolArgumentHasherTests.java`](../../../src/test/java/com/example/myllm/harness/application/ToolArgumentHasherTests.java)
+中补入以下六项测试：
+
+- Java 数组和结构化 JsonNode 与等价集合生成相同哈希；
+- 合法标量 JsonNode 与对应 Java 标量生成相同哈希；
+- 非 Set 的其他 Iterable 固定失败；
+- 深度 32 成功且深度 33 固定失败；
+- 总节点数 10,000 成功且 10,001 固定失败；
+- 规范 JSON 1,048,576 字节成功且 1,048,577 字节固定失败。
+
+最终可执行状态以链接的测试文件和本计划“最终验收修复结果”中的 22 项测试统计为准。
 
 - [x] **步骤 2：运行测试并确认按预期失败**
 
