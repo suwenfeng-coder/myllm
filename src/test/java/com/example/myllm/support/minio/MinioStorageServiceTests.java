@@ -1,12 +1,14 @@
 package com.example.myllm.support.minio;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.myllm.config.MinioProperties;
+import com.example.myllm.testing.LogCapture;
 import io.minio.BucketExistsArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -47,27 +49,40 @@ class MinioStorageServiceTests {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "docs/report.pdf", "application/pdf", "pdf".getBytes(StandardCharsets.UTF_8));
 
-        MinioStoredObject stored = service.storeOriginal(FILE_ID, file, STORAGE_DATE);
+        try (LogCapture logs = LogCapture.forClass(MinioStorageService.class)) {
+            MinioStoredObject stored = service.storeOriginal(FILE_ID, file, STORAGE_DATE);
 
-        ArgumentCaptor<PutObjectArgs> args = ArgumentCaptor.forClass(PutObjectArgs.class);
-        verify(minioClient).putObject(args.capture());
-        assertEquals(
-                "uploads/2026-07-02/report__550e8400-e29b-41d4-a716-446655440000.pdf",
-                args.getValue().object());
-        assertEquals("report__550e8400-e29b-41d4-a716-446655440000.pdf", stored.fileName());
+            ArgumentCaptor<PutObjectArgs> args = ArgumentCaptor.forClass(PutObjectArgs.class);
+            verify(minioClient).putObject(args.capture());
+            assertEquals(
+                    "uploads/2026-07-02/report__550e8400-e29b-41d4-a716-446655440000.pdf",
+                    args.getValue().object());
+            assertEquals("report__550e8400-e29b-41d4-a716-446655440000.pdf", stored.fileName());
+            assertEquals(3L, stored.sizeBytes());
+            assertFalse(logs.eventStartingWith("原始文件已写入 MinIO")
+                    .getFormattedMessage()
+                    .contains("size="));
+        }
     }
 
     @Test
     void parsedUploadUsesMatchingUniqueReadableName() throws Exception {
-        MinioStoredObject stored = service.storeParsed(FILE_ID, "docs/report.pdf", "body", STORAGE_DATE);
+        try (LogCapture logs = LogCapture.forClass(MinioStorageService.class)) {
+            MinioStoredObject stored = service.storeParsed(
+                    FILE_ID, "docs/report.pdf", "body", STORAGE_DATE);
 
-        ArgumentCaptor<PutObjectArgs> args = ArgumentCaptor.forClass(PutObjectArgs.class);
-        verify(minioClient).putObject(args.capture());
-        assertEquals(
-                "parsed/2026-07-02/report__550e8400-e29b-41d4-a716-446655440000.parsed.md",
-                args.getValue().object());
-        assertEquals(
-                "report__550e8400-e29b-41d4-a716-446655440000.parsed.md",
-                stored.fileName());
+            ArgumentCaptor<PutObjectArgs> args = ArgumentCaptor.forClass(PutObjectArgs.class);
+            verify(minioClient).putObject(args.capture());
+            assertEquals(
+                    "parsed/2026-07-02/report__550e8400-e29b-41d4-a716-446655440000.parsed.md",
+                    args.getValue().object());
+            assertEquals(
+                    "report__550e8400-e29b-41d4-a716-446655440000.parsed.md",
+                    stored.fileName());
+            assertEquals(4L, stored.sizeBytes());
+            assertFalse(logs.eventStartingWith("解析文件已写入 MinIO")
+                    .getFormattedMessage()
+                    .contains("size="));
+        }
     }
 }

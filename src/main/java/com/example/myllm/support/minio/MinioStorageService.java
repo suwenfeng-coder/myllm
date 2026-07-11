@@ -59,7 +59,10 @@ public class MinioStorageService {
                     ? "application/octet-stream"
                     : file.getContentType();
             uploadBytes(objectPath, bytes, contentType);
-            log.info("原始文件已写入 MinIO bucket={} object={} size={}", properties.bucket(), objectPath, bytes.length);
+            log.info(
+                    "原始文件已写入 MinIO bucket={} object={}",
+                    properties.bucket(),
+                    objectPath);
             return new MinioStoredObject(
                     properties.bucket(), objectPath, storedFileName, contentType, bytes.length);
         } catch (Exception e) {
@@ -79,7 +82,10 @@ public class MinioStorageService {
         try {
             byte[] bytes = normalizedContent.getBytes(StandardCharsets.UTF_8);
             uploadBytes(objectPath, bytes, "text/markdown; charset=utf-8");
-            log.info("解析文件已写入 MinIO bucket={} object={} size={}", properties.bucket(), objectPath, bytes.length);
+            log.info(
+                    "解析文件已写入 MinIO bucket={} object={}",
+                    properties.bucket(),
+                    objectPath);
             return new MinioStoredObject(
                     properties.bucket(), objectPath, parsedFileName,
                     "text/markdown; charset=utf-8", bytes.length);
