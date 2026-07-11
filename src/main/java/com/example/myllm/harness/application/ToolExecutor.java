@@ -13,12 +13,8 @@ import com.example.myllm.harness.port.ToolResult;
 import com.example.myllm.harness.repository.HarnessToolCallRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -47,6 +43,7 @@ public class ToolExecutor {
     private final HarnessProperties properties;
     private final ObjectMapper objectMapper;
     private final ToolArgumentAuditSummarizer argumentAuditSummarizer;
+    private final ToolArgumentHasher argumentHasher;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public ToolExecutor(
@@ -55,13 +52,15 @@ public class ToolExecutor {
             HarnessToolCallRepository toolCallRepository,
             HarnessProperties properties,
             ObjectMapper objectMapper,
-            ToolArgumentAuditSummarizer argumentAuditSummarizer) {
+            ToolArgumentAuditSummarizer argumentAuditSummarizer,
+            ToolArgumentHasher argumentHasher) {
         this.toolRegistry = toolRegistry;
         this.policyEngine = policyEngine;
         this.toolCallRepository = toolCallRepository;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.argumentAuditSummarizer = argumentAuditSummarizer;
+        this.argumentHasher = argumentHasher;
     }
 
     /**
@@ -85,8 +84,11 @@ public class ToolExecutor {
         ToolDescriptor descriptor = tool.descriptor();
         policyEngine.validate(toolName, descriptor, safeContext);
 
-        String idempotencyKey = resolveIdempotencyKey(safeContext, toolName, input);
         boolean persistAudit = hasRunId(safeContext);
+        String argumentsHash = persistAudit ? argumentHasher.hash(input) : null;
+        String idempotencyKey = persistAudit
+                ? resolveIdempotencyKey(safeContext, toolName, argumentsHash)
+                : null;
 
         if (persistAudit) {
             Optional<HarnessToolCall> existing =
@@ -104,6 +106,7 @@ public class ToolExecutor {
                     descriptor,
                     tool.inputType(),
                     idempotencyKey,
+                    argumentsHash,
                     input);
             audit.setStatus(ToolCallStatus.RUNNING);
             toolCallRepository.saveAndFlush(audit);
@@ -239,6 +242,7 @@ public class ToolExecutor {
             ToolDescriptor descriptor,
             Class<?> declaredInputType,
             String idempotencyKey,
+            String argumentsHash,
             Object input) {
         HarnessToolCall auditRecord = new HarnessToolCall();
         auditRecord.setToolCallId(UUID.randomUUID().toString());
@@ -249,27 +253,19 @@ public class ToolExecutor {
         auditRecord.setRiskLevel(descriptor.riskLevel());
         auditRecord.setStatus(ToolCallStatus.PENDING);
         auditRecord.setIdempotencyKey(idempotencyKey);
-        auditRecord.setArgumentsHash(hashInput(input));
+        auditRecord.setArgumentsHash(argumentsHash);
         auditRecord.setArgumentsRedactedJson(argumentAuditSummarizer.summarize(declaredInputType, input));
         return auditRecord;
     }
 
-    private static String resolveIdempotencyKey(ToolExecutionContext context, String toolName, Object input) {
+    private static String resolveIdempotencyKey(
+            ToolExecutionContext context,
+            String toolName,
+            String argumentsHash) {
         if (context.idempotencyKey() != null && !context.idempotencyKey().isBlank()) {
             return context.idempotencyKey().trim();
         }
-        return toolName + ":" + hashInput(input);
-    }
-
-    private static String hashInput(Object input) {
-        String raw = input == null ? "" : String.valueOf(input);
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashed = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashed);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 不可用", e);
-        }
+        return toolName + ":" + argumentsHash;
     }
 
     private static String truncate(String value, int max) {

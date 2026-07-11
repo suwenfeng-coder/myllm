@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.example.myllm.harness.config.HarnessConfiguration;
 import com.example.myllm.harness.domain.HarnessDomainException;
@@ -21,19 +23,24 @@ import com.example.myllm.harness.port.ToolResult;
 import com.example.myllm.harness.repository.HarnessToolCallRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.TestPropertySource;
 
 @DataJpaTest
 @Import({
         ToolExecutor.class,
-        ToolArgumentAuditSummarizer.class,
         ToolPolicyEngine.class,
         HarnessConfiguration.class,
         ToolExecutorTests.TestConfig.class,
@@ -48,11 +55,28 @@ class ToolExecutorTests {
     @Autowired
     private HarnessRunService harnessRunService;
 
-    @Autowired
+    @MockitoSpyBean
     private HarnessToolCallRepository toolCallRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private CountingToolArgumentHasher argumentHasher;
+
+    @Autowired
+    private CountingCanonicalTool canonicalTool;
+
+    @Autowired
+    private HashFailureTestTool hashFailureTool;
+
+    @BeforeEach
+    void resetCounters() {
+        argumentHasher.reset();
+        canonicalTool.reset();
+        hashFailureTool.reset();
+        clearInvocations(toolCallRepository);
+    }
 
     @Test
     void executesAllowedToolAndPersistsAudit() {
@@ -66,6 +90,8 @@ class ToolExecutorTests {
         assertEquals("echo:hello", result.resultPreview());
         assertEquals(1, toolCallRepository.findAll().size());
         assertEquals(ToolCallStatus.SUCCEEDED, toolCallRepository.findAll().get(0).getStatus());
+        assertEquals(1, argumentHasher.calls());
+        assertEquals(argumentHasher.lastHash(), toolCallRepository.findAll().get(0).getArgumentsHash());
     }
 
     @Test
@@ -91,6 +117,85 @@ class ToolExecutorTests {
         assertTrue(second.success());
         assertEquals("echo:once", second.resultPreview());
         assertEquals(1, toolCallRepository.count());
+    }
+
+    @Test
+    void canonicalAutomaticIdempotencyHashesOncePerCallAndExecutesOnce() {
+        HarnessRun run = harnessRunService.createRun(new HarnessRunService.CreateRunCommand(
+                "knowledge-assistant", 1, "hash", RunType.AGENT_LOOP, "obj", "req-canonical-auto", null, null, 8));
+        ToolExecutionContext context = new ToolExecutionContext(
+                run.getRunId(), null, null, Set.of(TestConfig.CANONICAL_TEST));
+        Map<String, Object> first = new LinkedHashMap<>();
+        first.put("query", "制度依据");
+        first.put("fileIds", List.of("f1", "f2"));
+        Map<String, Object> second = new LinkedHashMap<>();
+        second.put("fileIds", List.of("f1", "f2"));
+        second.put("query", "制度依据");
+
+        ToolResult<?> firstResult = toolExecutor.execute(context, TestConfig.CANONICAL_TEST, first);
+        assertTrue(firstResult.success());
+        assertEquals(1, argumentHasher.calls());
+        String firstHash = argumentHasher.lastHash();
+
+        ToolResult<?> secondResult = toolExecutor.execute(context, TestConfig.CANONICAL_TEST, second);
+        assertTrue(secondResult.success());
+        assertEquals(2, argumentHasher.calls());
+        assertEquals(firstHash, argumentHasher.lastHash());
+        assertEquals(1, canonicalTool.executions());
+
+        var calls = toolCallRepository.findAll();
+        assertEquals(1, calls.size());
+        assertEquals(firstHash, calls.get(0).getArgumentsHash());
+        assertEquals(TestConfig.CANONICAL_TEST + ":" + firstHash, calls.get(0).getIdempotencyKey());
+    }
+
+    @Test
+    void explicitIdempotencyStillHashesExactlyOnceForAudit() {
+        HarnessRun run = harnessRunService.createRun(new HarnessRunService.CreateRunCommand(
+                "knowledge-assistant", 1, "hash", RunType.AGENT_LOOP, "obj", "req-canonical-explicit", null, null, 8));
+        ToolExecutionContext context = new ToolExecutionContext(
+                run.getRunId(), null, "  explicit-key  ", Set.of(TestConfig.ECHO_TEST));
+
+        ToolResult<?> result = toolExecutor.execute(context, TestConfig.ECHO_TEST, "hello");
+
+        assertTrue(result.success());
+        assertEquals(1, argumentHasher.calls());
+        var call = toolCallRepository.findAll().get(0);
+        assertEquals("explicit-key", call.getIdempotencyKey());
+        assertEquals(argumentHasher.lastHash(), call.getArgumentsHash());
+    }
+
+    @Test
+    void hashFailureHappensBeforeRepositoryAndToolExecution() {
+        HarnessRun run = harnessRunService.createRun(new HarnessRunService.CreateRunCommand(
+                "knowledge-assistant", 1, "hash", RunType.AGENT_LOOP, "obj", "req-hash-failure", null, null, 8));
+        ToolExecutionContext context = new ToolExecutionContext(
+                run.getRunId(), null, "explicit-failure", Set.of(TestConfig.HASH_FAILURE_TEST));
+        clearInvocations(toolCallRepository);
+
+        HarnessDomainException exception = assertThrows(
+                HarnessDomainException.class,
+                () -> toolExecutor.execute(context, TestConfig.HASH_FAILURE_TEST, new HashFailureInput()));
+
+        assertEquals(HarnessErrorCode.VALIDATION_FAILED, exception.getErrorCode());
+        assertEquals("工具参数无法安全规范化", exception.getMessage());
+        assertNull(exception.getCause());
+        assertEquals(1, argumentHasher.calls());
+        assertEquals(0, hashFailureTool.executions());
+        verifyNoInteractions(toolCallRepository);
+    }
+
+    @Test
+    void temporaryCallWithoutRunIdSkipsHashing() {
+        ToolExecutionContext context = new ToolExecutionContext(
+                null, null, null, Set.of(TestConfig.HASH_FAILURE_TEST));
+
+        ToolResult<?> result = toolExecutor.execute(
+                context, TestConfig.HASH_FAILURE_TEST, new HashFailureInput());
+
+        assertTrue(result.success());
+        assertEquals(0, argumentHasher.calls());
+        assertEquals(1, hashFailureTool.executions());
     }
 
     @Test
@@ -189,7 +294,7 @@ class ToolExecutorTests {
         ToolResult<?> result = toolExecutor.execute(
                 context,
                 ToolExecutorTests.TestConfig.AUDIT_FAILURE_TEST,
-                new AuditFailureInput());
+                new AuditFailureInput("触发固定摘要"));
 
         assertTrue(result.success());
         String auditJson = toolCallRepository.findAll().get(0).getArgumentsRedactedJson();
@@ -203,6 +308,8 @@ class ToolExecutorTests {
         static final String NULL_TEST = "null.test";
         static final String VOID_TEST = "void.test";
         static final String AUDIT_FAILURE_TEST = "audit.failure.test";
+        static final String CANONICAL_TEST = "canonical.test";
+        static final String HASH_FAILURE_TEST = "hash.failure.test";
 
         @Bean
         @Primary
@@ -210,13 +317,37 @@ class ToolExecutorTests {
                 EchoTestTool echoTestTool,
                 NullResultTool nullResultTool,
                 VoidTestTool voidTestTool,
-                AuditFailureTestTool auditFailureTestTool) {
+                AuditFailureTestTool auditFailureTestTool,
+                CountingCanonicalTool canonicalTool,
+                HashFailureTestTool hashFailureTool) {
             DefaultToolRegistry registry = new DefaultToolRegistry(java.util.List.of());
             registry.register(echoTestTool);
             registry.register(nullResultTool);
             registry.register(voidTestTool);
             registry.register(auditFailureTestTool);
+            registry.register(canonicalTool);
+            registry.register(hashFailureTool);
             return registry;
+        }
+
+        @Bean
+        CountingToolArgumentHasher toolArgumentHasher() {
+            return new CountingToolArgumentHasher();
+        }
+
+        @Bean
+        ToolArgumentAuditSummarizer toolArgumentAuditSummarizer(ObjectMapper objectMapper) {
+            return new TestToolArgumentAuditSummarizer(objectMapper);
+        }
+
+        @Bean
+        CountingCanonicalTool canonicalTool() {
+            return new CountingCanonicalTool();
+        }
+
+        @Bean
+        HashFailureTestTool hashFailureTool() {
+            return new HashFailureTestTool();
         }
 
         @Bean
@@ -341,10 +472,134 @@ class ToolExecutorTests {
         }
     }
 
-    static final class AuditFailureInput {
+    record AuditFailureInput(String marker) {
+    }
+
+    record CanonicalInput(String query, List<String> fileIds) {
+    }
+
+    static final class HashFailureInput {
 
         public String getSecret() {
-            throw new IllegalStateException("测试读取失败");
+            throw new IllegalStateException("密钥-不得泄露");
+        }
+    }
+
+    static class CountingToolArgumentHasher extends ToolArgumentHasher {
+
+        private final AtomicInteger calls = new AtomicInteger();
+        private volatile String lastHash;
+
+        @Override
+        public String hash(Object input) {
+            calls.incrementAndGet();
+            lastHash = super.hash(input);
+            return lastHash;
+        }
+
+        int calls() {
+            return calls.get();
+        }
+
+        String lastHash() {
+            return lastHash;
+        }
+
+        void reset() {
+            calls.set(0);
+            lastHash = null;
+        }
+    }
+
+    static class TestToolArgumentAuditSummarizer extends ToolArgumentAuditSummarizer {
+
+        private static final String FALLBACK =
+                "{\"schemaVersion\":1,\"summary\":{\"type\":\"unavailable\"}}";
+
+        TestToolArgumentAuditSummarizer(ObjectMapper objectMapper) {
+            super(objectMapper);
+        }
+
+        @Override
+        public String summarize(Class<?> declaredInputType, Object input) {
+            if (AuditFailureInput.class.equals(declaredInputType)) {
+                return FALLBACK;
+            }
+            return super.summarize(declaredInputType, input);
+        }
+    }
+
+    static class CountingCanonicalTool implements HarnessTool<CanonicalInput, String> {
+
+        private final AtomicInteger executions = new AtomicInteger();
+
+        @Override
+        public ToolDescriptor descriptor() {
+            return new ToolDescriptor(
+                    TestConfig.CANONICAL_TEST,
+                    "1",
+                    "规范化参数测试工具",
+                    ToolRisk.READ_ONLY,
+                    5000,
+                    true,
+                    false,
+                    4096);
+        }
+
+        @Override
+        public Class<CanonicalInput> inputType() {
+            return CanonicalInput.class;
+        }
+
+        @Override
+        public ToolResult<String> execute(ToolExecutionContext context, CanonicalInput input) {
+            executions.incrementAndGet();
+            return ToolResult.ok("done", "canonical:" + input.query(), 1);
+        }
+
+        int executions() {
+            return executions.get();
+        }
+
+        void reset() {
+            executions.set(0);
+        }
+    }
+
+    static class HashFailureTestTool implements HarnessTool<HashFailureInput, String> {
+
+        private final AtomicInteger executions = new AtomicInteger();
+
+        @Override
+        public ToolDescriptor descriptor() {
+            return new ToolDescriptor(
+                    TestConfig.HASH_FAILURE_TEST,
+                    "1",
+                    "参数哈希失败测试工具",
+                    ToolRisk.READ_ONLY,
+                    5000,
+                    true,
+                    false,
+                    4096);
+        }
+
+        @Override
+        public Class<HashFailureInput> inputType() {
+            return HashFailureInput.class;
+        }
+
+        @Override
+        public ToolResult<String> execute(ToolExecutionContext context, HashFailureInput input) {
+            executions.incrementAndGet();
+            return ToolResult.ok("done", "hash-failure-input-executed", 1);
+        }
+
+        int executions() {
+            return executions.get();
+        }
+
+        void reset() {
+            executions.set(0);
         }
     }
 }
