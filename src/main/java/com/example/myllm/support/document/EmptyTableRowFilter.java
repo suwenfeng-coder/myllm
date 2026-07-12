@@ -33,17 +33,11 @@ public final class EmptyTableRowFilter {
     }
 
     public static boolean shouldRemoveBlock(DocumentBlock block) {
-        if (block == null || block.content().isBlank()) {
-            return true;
-        }
-        if (block.type() == DocumentBlockType.TABLE_ROW && isEmptyTableRow(block.content())) {
-            return true;
-        }
-        if ((block.type() == DocumentBlockType.PARAGRAPH || block.type() == DocumentBlockType.TABLE_ROW)
-                && isImagePlaceholder(block.content())) {
-            return true;
-        }
-        return false;
+        return block == null
+                || block.content().isBlank()
+                || (block.type() == DocumentBlockType.TABLE_ROW && isEmptyTableRow(block.content()))
+                || ((block.type() == DocumentBlockType.PARAGRAPH || block.type() == DocumentBlockType.TABLE_ROW)
+                && isImagePlaceholder(block.content()));
     }
 
     public static int countRemovable(List<DocumentBlock> blocks) {

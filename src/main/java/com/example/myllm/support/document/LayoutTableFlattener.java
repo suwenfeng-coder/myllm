@@ -112,27 +112,29 @@ public final class LayoutTableFlattener {
     static List<DocumentBlock> flattenLayoutSegment(List<DocumentBlock> rows) {
         List<DocumentBlock> flattened = new ArrayList<>(rows.size());
         for (DocumentBlock row : rows) {
-            String content = row.content();
-            if (MarkdownTableCompactor.isSeparatorRow(content)
-                    || EmptyTableRowFilter.isEmptyTableRow(content)) {
-                continue;
+            DocumentBlock paragraph = toFlattenedParagraph(row);
+            if (paragraph != null) {
+                flattened.add(paragraph);
             }
-            List<String> cells = MarkdownTableCompactor.splitCells(content);
-            List<String> nonEmpty = cells.stream().filter(cell -> !cell.isBlank()).toList();
-            if (nonEmpty.isEmpty()) {
-                continue;
-            }
-            if (nonEmpty.size() == 1 && cells.size() >= 2) {
-                continue;
-            }
-            String text = toParagraphText(nonEmpty);
-            if (text.isBlank()) {
-                continue;
-            }
-            flattened.add(new DocumentBlock(
-                    DocumentBlockType.PARAGRAPH, text, null, row.sourceIndex()));
         }
         return flattened;
+    }
+
+    private static DocumentBlock toFlattenedParagraph(DocumentBlock row) {
+        String content = row.content();
+        if (MarkdownTableCompactor.isSeparatorRow(content)
+                || EmptyTableRowFilter.isEmptyTableRow(content)) {
+            return null;
+        }
+        List<String> cells = MarkdownTableCompactor.splitCells(content);
+        List<String> nonEmpty = cells.stream().filter(cell -> !cell.isBlank()).toList();
+        if (nonEmpty.isEmpty() || (nonEmpty.size() == 1 && cells.size() >= 2)) {
+            return null;
+        }
+        String text = toParagraphText(nonEmpty);
+        return text.isBlank()
+                ? null
+                : new DocumentBlock(DocumentBlockType.PARAGRAPH, text, null, row.sourceIndex());
     }
 
     private static String toParagraphText(List<String> nonEmpty) {

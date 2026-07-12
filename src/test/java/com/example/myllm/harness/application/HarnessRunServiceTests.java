@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.example.myllm.harness.config.HarnessConfiguration;
 import com.example.myllm.harness.domain.HarnessDomainException;
@@ -14,7 +15,7 @@ import com.example.myllm.harness.entity.HarnessRun;
 import com.example.myllm.harness.repository.HarnessEventRepository;
 import com.example.myllm.harness.repository.HarnessRunRepository;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Month;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -33,6 +34,8 @@ import org.springframework.test.context.TestPropertySource;
         "harness.worker.lease-duration-ms=30000"
 })
 class HarnessRunServiceTests {
+
+    private static final LocalDateTime EXPIRED_LEASE_TIME = LocalDateTime.of(2026, Month.JULY, 5, 12, 0);
 
     private final HarnessRunService harnessRunService;
     private final HarnessRunRepository runRepository;
@@ -88,9 +91,10 @@ class HarnessRunServiceTests {
         HarnessRun run = harnessRunService.createRun(sampleCommand("client-req-003"));
         HarnessRunService.ClaimedRun firstClaim = harnessRunService.claimNext("worker-old").orElseThrow();
         String staleToken = firstClaim.leaseToken();
+        String runId = run.getRunId();
 
-        HarnessRun entity = runRepository.findById(run.getRunId()).orElseThrow();
-        entity.setLeaseExpiresAt(LocalDateTime.now(ZoneId.systemDefault()).minusMinutes(1));
+        HarnessRun entity = runRepository.findById(runId).orElseThrow();
+        entity.setLeaseExpiresAt(EXPIRED_LEASE_TIME);
         runRepository.saveAndFlush(entity);
 
         harnessRunService.recoverExpiredLeases();
@@ -101,11 +105,11 @@ class HarnessRunServiceTests {
                 HarnessErrorCode.LEASE_MISMATCH,
                 assertThrows(
                         HarnessDomainException.class,
-                        () -> harnessRunService.completeRun(run.getRunId(), staleToken, "stale", null))
+                        () -> harnessRunService.completeRun(runId, staleToken, "stale", null))
                         .getErrorCode());
 
-        harnessRunService.completeRun(run.getRunId(), secondClaim.leaseToken(), "ok", null);
-        assertEquals(RunStatus.SUCCEEDED, runRepository.findById(run.getRunId()).orElseThrow().getStatus());
+        harnessRunService.completeRun(runId, secondClaim.leaseToken(), "ok", null);
+        assertEquals(RunStatus.SUCCEEDED, runRepository.findById(runId).orElseThrow().getStatus());
     }
 
     @Test
@@ -125,7 +129,7 @@ class HarnessRunServiceTests {
 
         HarnessRun cancellationRequested = harnessRunService.requestCancel(run.getRunId());
         assertEquals(RunStatus.RUNNING, cancellationRequested.getStatus());
-        assertEquals(true, cancellationRequested.isCancelRequested());
+        assertTrue(cancellationRequested.isCancelRequested());
 
         HarnessRun cancelled = harnessRunService.cancelRun(run.getRunId(), claimed.leaseToken(), "用户取消");
         assertEquals(RunStatus.CANCELLED, cancelled.getStatus());

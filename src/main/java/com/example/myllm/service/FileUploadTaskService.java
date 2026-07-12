@@ -25,7 +25,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-/** 异步上传任务创建、进度更新与查询。 */
+/**
+ * 异步上传任务创建、进度更新与查询。
+ *
+ * <p>HTTP 上传线程只负责落临时文件和创建 {@code document_upload_task}，长耗时的解析、清洗、分块和
+ * embedding 由 {@link FileUploadTaskWorker} 异步消费，避免 Tomcat 请求线程被大文件占满。</p>
+ *
+ * <p>当前实现使用 MySQL {@code FOR UPDATE SKIP LOCKED} 保证单次领取互斥；尚未引入 lease/fencing，
+ * 因此长任务超时恢复后的旧 Worker 回写风险属于后续生产化优化项。</p>
+ */
 @Service
 public class FileUploadTaskService {
 
@@ -108,6 +116,12 @@ public class FileUploadTaskService {
         }
     }
 
+    /**
+     * 原子领取下一条待处理任务。
+     *
+     * <p>该事务只覆盖“把 PENDING 标记为 RUNNING”这一步，真正的文档处理在事务外执行，避免数据库行锁被
+     * DocForge/embedding 这类长耗时外部调用持有。</p>
+     */
     @Transactional
     public Optional<DocumentUploadTask> claimNext() {
         return repository.lockNextPendingTask().map(task -> {
@@ -122,6 +136,12 @@ public class FileUploadTaskService {
         });
     }
 
+    /**
+     * 将长时间未开始或未结束的任务标记为失败。
+     *
+     * <p>这是兜底恢复机制，不是强制中断正在执行的 Java 线程；当前 Worker 没有协作式 cancellation token，
+     * 因此后续要配合 lease token 防止旧执行器回写成功。</p>
+     */
     @Transactional
     public int recoverTimedOutTasks() {
         LocalDateTime runningCutoff =
@@ -153,6 +173,11 @@ public class FileUploadTaskService {
         return deleted;
     }
 
+    /**
+     * 更新上传任务进度。
+     *
+     * <p>终态任务不会被进度回写覆盖，避免用户取消或任务失败后，后台迟到的进度上报把终态改回 RUNNING。</p>
+     */
     @Transactional
     public void updateProgress(
             String taskId,
@@ -179,6 +204,11 @@ public class FileUploadTaskService {
         repository.save(task);
     }
 
+    /**
+     * 标记任务成功并保存最终入库结果。
+     *
+     * <p>成功后会删除临时文件；最终向量分片和 MinIO 对象由入库流水线负责保留。</p>
+     */
     @Transactional
     public void markSuccess(
             String taskId,
@@ -204,6 +234,12 @@ public class FileUploadTaskService {
         deleteTempFileQuietly(task);
     }
 
+    /**
+     * 标记任务失败并清理临时文件。
+     *
+     * <p>向量/MinIO/MySQL 审计的补偿由 {@link FileEmbeddingService} 内部按照 fileId 执行，这里只处理任务
+     * 表状态和上传临时文件。</p>
+     */
     @Transactional
     public void markFailure(String taskId, Throwable error) {
         DocumentUploadTask task = requireTask(taskId);
@@ -230,6 +266,12 @@ public class FileUploadTaskService {
         deleteTempFileQuietly(task);
     }
 
+    /**
+     * 判断本次上传是否应该自动切换到异步任务。
+     *
+     * <p>Maker 和 PDF Docling/Maker 往往会加载版面模型或执行长轮询，即使文件不大也倾向异步，避免浏览器
+     * 请求超时；普通小文件仍可同步处理以保持交互简单。</p>
+     */
     public boolean shouldUseAsyncUpload(MultipartFile file, String parseMode) {
         if (!properties.isEnabled()) {
             return false;

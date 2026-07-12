@@ -6,7 +6,6 @@ import com.example.myllm.harness.domain.HarnessErrorCode;
 import com.example.myllm.harness.domain.ToolRisk;
 import com.example.myllm.harness.port.ToolDescriptor;
 import com.example.myllm.harness.port.ToolExecutionContext;
-import com.example.myllm.harness.port.ToolRegistry;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;

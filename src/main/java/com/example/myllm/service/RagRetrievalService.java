@@ -18,6 +18,13 @@ import org.springframework.stereotype.Service;
 
 /**
  * RAG 检索编排：扩大候选召回、Neo4j 图召回、多路 RRF 融合、去重与最终截断。
+ *
+ * <p>本类是在线 RAG 的“粗排控制塔”，不负责拼 Prompt，也不直接调用 Chat 模型。它把用户问题先改写成
+ * 检索友好的查询，再并行接入 Dense、BM25 与可选 Graph 召回，最后用 RRF 融合和
+ * {@link RetrievalCandidateRanker} 做阈值、去重、单文档限额等业务规则。</p>
+ *
+ * <p>降级语义：BM25 或 Graph 不可用不应中断问答主链路；诊断信息会记录实际检索模式和 fallback reason，
+ * 由 {@link ChatService} 决定是否将结果应用到最终 Prompt。</p>
  */
 @Service
 public class RagRetrievalService {
@@ -79,6 +86,15 @@ public class RagRetrievalService {
         this.filenameLookupMaxChunks = Math.max(1, filenameLookupMaxChunks);
     }
 
+    /**
+     * 完成一次 RAG 候选检索。
+     *
+     * <p>返回值同时包含 {@code rawHits} 与 {@code acceptedHits}：前者用于诊断“底层有没有召回”，后者才是
+     * 允许进入 Prompt 的有效证据。这个拆分是为了避免“检索返回了低相关结果，却仍标记 RAG 成功”的问题。</p>
+     *
+     * <p>文件范围语义：页面显式传入的 {@code fileIds} 是硬边界；问题中的文件名线索只会在该范围内进一步
+     * 收窄，不会越权扩大检索范围。</p>
+     */
     @SuppressWarnings({"java:S3776", "java:S6541"}) // Retrieval orchestration keeps fallback state explicit.
     public RetrievalResult retrieve(String query, List<String> fileIds) {
         QueryRewriteResult rewrite = queryRewriteService.rewrite(query);

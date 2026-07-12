@@ -13,12 +13,8 @@ import com.example.myllm.harness.port.ToolResult;
 import com.example.myllm.harness.repository.HarnessToolCallRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -46,6 +42,8 @@ public class ToolExecutor {
     private final HarnessToolCallRepository toolCallRepository;
     private final HarnessProperties properties;
     private final ObjectMapper objectMapper;
+    private final ToolArgumentAuditSummarizer argumentAuditSummarizer;
+    private final ToolArgumentHasher argumentHasher;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public ToolExecutor(
@@ -53,30 +51,45 @@ public class ToolExecutor {
             ToolPolicyEngine policyEngine,
             HarnessToolCallRepository toolCallRepository,
             HarnessProperties properties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ToolArgumentAuditSummarizer argumentAuditSummarizer,
+            ToolArgumentHasher argumentHasher) {
         this.toolRegistry = toolRegistry;
         this.policyEngine = policyEngine;
         this.toolCallRepository = toolCallRepository;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.argumentAuditSummarizer = argumentAuditSummarizer;
+        this.argumentHasher = argumentHasher;
     }
 
+    /**
+     * 在 Harness 策略约束下执行一个工具调用。
+     *
+     * <p>执行顺序固定为：查找工具 → 风险策略校验 → 持久化路径参数规范化哈希 → 幂等审计命中检查 → 写
+     * RUNNING 审计 → 带超时调用工具 → 机械检查结果大小 → 写终态审计。工具输出只有通过大小与序列化检查后才
+     * 允许进入后续 Context。</p>
+     *
+     * <p>当上下文中没有 runId 时，本方法仍可用于测试或临时调用，但不会持久化 tool_call 审计。</p>
+     */
     @Transactional
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public ToolResult<?> execute(ToolExecutionContext context, String toolName, Object input) {
+    public ToolResult<Object> execute(ToolExecutionContext context, String toolName, Object input) {
         ToolExecutionContext safeContext = context == null
                 ? new ToolExecutionContext(null, null, null, policyEngine.effectiveAllowlist(null))
                 : context;
 
-        HarnessTool tool = toolRegistry.find(toolName)
+        HarnessTool<?, ?> tool = toolRegistry.find(toolName)
                 .orElseThrow(() -> new HarnessDomainException(
                         HarnessErrorCode.TOOL_NOT_ALLOWED, "未注册工具: " + toolName));
 
         ToolDescriptor descriptor = tool.descriptor();
         policyEngine.validate(toolName, descriptor, safeContext);
 
-        String idempotencyKey = resolveIdempotencyKey(safeContext, toolName, input);
         boolean persistAudit = hasRunId(safeContext);
+        String argumentsHash = persistAudit ? argumentHasher.hash(input) : null;
+        String idempotencyKey = persistAudit
+                ? resolveIdempotencyKey(safeContext, toolName, argumentsHash)
+                : null;
 
         if (persistAudit) {
             Optional<HarnessToolCall> existing =
@@ -89,35 +102,42 @@ public class ToolExecutor {
 
         HarnessToolCall audit = null;
         if (persistAudit) {
-            audit = createAuditRecord(safeContext, descriptor, idempotencyKey, input);
+            audit = createAuditRecord(
+                    safeContext,
+                    descriptor,
+                    tool.inputType(),
+                    idempotencyKey,
+                    argumentsHash,
+                    input);
             audit.setStatus(ToolCallStatus.RUNNING);
             toolCallRepository.saveAndFlush(audit);
         }
 
         long timeoutMs = Math.min(descriptor.timeoutMs(), properties.getTools().getDefaultTimeoutMs());
-        ToolResult<?> result = invokeWithTimeout(tool, safeContext, input, timeoutMs);
+        ToolResult<Object> result = invokeWithTimeout(tool, safeContext, input, timeoutMs);
         result = enforceResultSize(result, descriptor);
 
-        if (persistAudit && audit != null) {
-            audit.setDurationMs(result.durationMs());
-            audit.setResultPreview(truncate(result.resultPreview(), PREVIEW_MAX));
+        if (persistAudit) {
+            HarnessToolCall auditRecord = requireAuditRecord(audit);
+            auditRecord.setDurationMs(result.durationMs());
+            auditRecord.setResultPreview(truncate(result.resultPreview(), PREVIEW_MAX));
             if (result.success()) {
-                audit.setStatus(ToolCallStatus.SUCCEEDED);
-                audit.setFinishedAt(LocalDateTime.now(ZoneId.systemDefault()));
+                auditRecord.setStatus(ToolCallStatus.SUCCEEDED);
+                auditRecord.setFinishedAt(LocalDateTime.now(ZoneId.systemDefault()));
             } else {
-                audit.setStatus(ToolCallStatus.FAILED);
-                audit.setErrorCode(result.errorCode());
-                audit.setErrorMessage(truncate(result.errorMessage(), PREVIEW_MAX));
-                audit.setFinishedAt(LocalDateTime.now(ZoneId.systemDefault()));
+                auditRecord.setStatus(ToolCallStatus.FAILED);
+                auditRecord.setErrorCode(result.errorCode());
+                auditRecord.setErrorMessage(truncate(result.errorMessage(), PREVIEW_MAX));
+                auditRecord.setFinishedAt(LocalDateTime.now(ZoneId.systemDefault()));
             }
-            toolCallRepository.save(audit);
+            toolCallRepository.save(auditRecord);
         }
         return result;
     }
 
     /** 工具声明的结果大小必须机械执行，超限结果不进入上下文。 */
-    private ToolResult<?> enforceResultSize(ToolResult<?> result, ToolDescriptor descriptor) {
-        if (result == null || !result.success() || result.output() == null) {
+    private ToolResult<Object> enforceResultSize(ToolResult<Object> result, ToolDescriptor descriptor) {
+        if (!result.success() || result.output() == null) {
             return result;
         }
         int maxBytes = Math.min(descriptor.maxResultBytes(), properties.getTools().getMaxResultBytes());
@@ -144,17 +164,22 @@ public class ToolExecutor {
         return context.runId() != null && !context.runId().isBlank();
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private ToolResult<?> invokeWithTimeout(
-            HarnessTool tool,
+    /**
+     * 在线程池中执行工具并施加硬超时。
+     *
+     * <p>超时会 cancel Future 并返回失败结果；工具自身仍应尽量响应中断，因为 Java 线程无法安全强杀正在
+     * 阻塞的外部 IO。</p>
+     */
+    private ToolResult<Object> invokeWithTimeout(
+            HarnessTool<?, ?> tool,
             ToolExecutionContext context,
             Object input,
             long timeoutMs) {
-        Callable<ToolResult<?>> task = () -> {
+        Callable<ToolResult<Object>> task = () -> {
             Object normalizedInput = normalizeInput(tool, input);
-            return tool.execute(context, normalizedInput);
+            return executeTyped(tool, context, normalizedInput);
         };
-        Future<ToolResult<?>> future = executor.submit(task);
+        Future<ToolResult<Object>> future = executor.submit(task);
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
@@ -169,8 +194,7 @@ public class ToolExecutor {
         }
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private Object normalizeInput(HarnessTool tool, Object input) {
+    private Object normalizeInput(HarnessTool<?, ?> tool, Object input) {
         Class<?> inputType = tool.inputType();
         if (Void.class.equals(inputType)) {
             return null;
@@ -189,49 +213,60 @@ public class ToolExecutor {
         return input;
     }
 
+    private static <I> ToolResult<Object> executeTyped(
+            HarnessTool<I, ?> tool,
+            ToolExecutionContext context,
+            Object input) {
+        I typedInput = tool.inputType().cast(input);
+        ToolResult<?> result = tool.execute(context, typedInput);
+        if (result == null) {
+            return ToolResult.failed("TOOL_EXECUTION_FAILED", "工具返回空结果", 0);
+        }
+        return new ToolResult<>(
+                result.success(),
+                result.output(),
+                result.resultPreview(),
+                result.errorCode(),
+                result.errorMessage(),
+                result.durationMs());
+    }
+
+    private static HarnessToolCall requireAuditRecord(HarnessToolCall audit) {
+        if (audit == null) {
+            throw new IllegalStateException("工具审计记录未初始化");
+        }
+        return audit;
+    }
+
     private HarnessToolCall createAuditRecord(
             ToolExecutionContext context,
             ToolDescriptor descriptor,
+            Class<?> declaredInputType,
             String idempotencyKey,
+            String argumentsHash,
             Object input) {
-        HarnessToolCall record = new HarnessToolCall();
-        record.setToolCallId(UUID.randomUUID().toString());
-        record.setRunId(context.runId());
-        record.setStepId(context.stepId());
-        record.setToolName(descriptor.name());
-        record.setToolVersion(descriptor.version());
-        record.setRiskLevel(descriptor.riskLevel());
-        record.setStatus(ToolCallStatus.PENDING);
-        record.setIdempotencyKey(idempotencyKey);
-        record.setArgumentsHash(hashInput(input));
-        record.setArgumentsRedactedJson(redactArguments(input));
-        return record;
+        HarnessToolCall auditRecord = new HarnessToolCall();
+        auditRecord.setToolCallId(UUID.randomUUID().toString());
+        auditRecord.setRunId(context.runId());
+        auditRecord.setStepId(context.stepId());
+        auditRecord.setToolName(descriptor.name());
+        auditRecord.setToolVersion(descriptor.version());
+        auditRecord.setRiskLevel(descriptor.riskLevel());
+        auditRecord.setStatus(ToolCallStatus.PENDING);
+        auditRecord.setIdempotencyKey(idempotencyKey);
+        auditRecord.setArgumentsHash(argumentsHash);
+        auditRecord.setArgumentsRedactedJson(argumentAuditSummarizer.summarize(declaredInputType, input));
+        return auditRecord;
     }
 
-    private static String resolveIdempotencyKey(ToolExecutionContext context, String toolName, Object input) {
+    private static String resolveIdempotencyKey(
+            ToolExecutionContext context,
+            String toolName,
+            String argumentsHash) {
         if (context.idempotencyKey() != null && !context.idempotencyKey().isBlank()) {
             return context.idempotencyKey().trim();
         }
-        return toolName + ":" + hashInput(input);
-    }
-
-    private static String redactArguments(Object input) {
-        if (input == null) {
-            return null;
-        }
-        String raw = String.valueOf(input);
-        return truncate(raw, 500);
-    }
-
-    private static String hashInput(Object input) {
-        String raw = input == null ? "" : String.valueOf(input);
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashed = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashed);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 不可用", e);
-        }
+        return toolName + ":" + argumentsHash;
     }
 
     private static String truncate(String value, int max) {

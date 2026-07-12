@@ -11,7 +11,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** 异步消费上传向量化任务，避免长时间占用 HTTP 线程。 */
+/**
+ * 异步消费上传向量化任务，避免长时间占用 HTTP 线程。
+ *
+ * <p>Worker 每次调度只领取一条任务，适合本地 Demo 和单机开发；如果后续提高并发度，需要配套 embedding
+ * 限流、DocForge 并发控制和任务 lease/fencing，避免多个长任务互相拖垮本地模型服务。</p>
+ */
 @Component
 @ConditionalOnProperty(prefix = "upload.task", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class FileUploadTaskWorker {
@@ -28,6 +33,12 @@ public class FileUploadTaskWorker {
         this.fileEmbeddingService = fileEmbeddingService;
     }
 
+    /**
+     * 定时恢复超时任务并领取下一条待处理任务。
+     *
+     * <p>这里不在同一个事务里执行文件解析/向量化；领取任务后立即释放 MySQL 锁，实际长耗时工作交给
+     * {@link #execute(DocumentUploadTask)}。</p>
+     */
     @Scheduled(fixedDelayString = "${upload.task.poll-interval-ms:2000}")
     public void processNext() {
         int recovered = taskService.recoverTimedOutTasks();
@@ -45,6 +56,12 @@ public class FileUploadTaskWorker {
         }
     }
 
+    /**
+     * 执行完整入库流水线，并把业务进度桥接回任务表。
+     *
+     * <p>{@link StoredUploadFile} 让已经落盘的临时文件重新表现为 MultipartFile，从而复用同步入库代码路径，
+     * 保证同步/异步上传的一致性。</p>
+     */
     private void execute(DocumentUploadTask task) {
         long startNanos = System.nanoTime();
         String taskId = task.getTaskId();

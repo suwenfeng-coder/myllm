@@ -13,6 +13,7 @@ Spring Boot RAG 知识库 Demo：对话 + 混合检索（Dense/BM25/Graph）+ �
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 组件分层与依赖方向 |
 | [HarnessEngineering改造方案.md](HarnessEngineering改造方案.md) | Harness 改造总方案 |
 | [docs/design-docs/ADR-001-harness-boundaries.md](docs/design-docs/ADR-001-harness-boundaries.md) | Harness 安全边界（必读） |
+| [docs/code-quality-guidelines.md](docs/code-quality-guidelines.md) | Sonar 扫描沉淀的代码质量规范 |
 | [待办优化方案.md](待办优化方案.md) | 功能状态与优先级 |
 | [README.md](README.md) | 启动、端口、开发命令 |
 

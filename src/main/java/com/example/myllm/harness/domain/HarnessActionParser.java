@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,8 @@ public class HarnessActionParser {
             };
         } catch (JsonProcessingException e) {
             return ParseResult.failure("JSON 解析失败: " + e.getOriginalMessage());
+        } catch (IllegalArgumentException e) {
+            return ParseResult.failure("工具参数结构解析失败");
         }
     }
 
@@ -54,34 +57,40 @@ public class HarnessActionParser {
         if (answer == null || answer.isBlank()) {
             return ParseResult.failure("FINAL 缺少 answer");
         }
-        List<HarnessAction.Citation> citations = new ArrayList<>();
-        JsonNode citationsNode = root.get("citations");
-        if (citationsNode != null && citationsNode.isArray()) {
-            for (JsonNode item : citationsNode) {
-                String sourceId = textOrNull(item, "sourceId");
-                if (sourceId == null) {
-                    sourceId = textOrNull(item, "source_id");
-                }
-                String excerpt = textOrNull(item, "excerpt");
-                if (sourceId != null && !sourceId.isBlank()) {
-                    citations.add(new HarnessAction.Citation(sourceId.trim(), excerpt == null ? "" : excerpt));
-                }
-            }
-        }
         String summary = textOrNull(root, "summary");
-        return ParseResult.success(new HarnessAction.Final(answer, citations, summary));
+        return ParseResult.success(new HarnessAction.Final(answer, parseCitations(root.get("citations")), summary));
+    }
+
+    private static List<HarnessAction.Citation> parseCitations(JsonNode citationsNode) {
+        if (citationsNode == null || !citationsNode.isArray()) {
+            return List.of();
+        }
+        List<HarnessAction.Citation> citations = new ArrayList<>();
+        for (JsonNode item : citationsNode) {
+            citationFrom(item).ifPresent(citations::add);
+        }
+        return List.copyOf(citations);
+    }
+
+    private static java.util.Optional<HarnessAction.Citation> citationFrom(JsonNode item) {
+        String sourceId = firstText(item, "sourceId", "source_id");
+        if (sourceId == null || sourceId.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String excerpt = textOrNull(item, "excerpt");
+        return java.util.Optional.of(new HarnessAction.Citation(sourceId.trim(), excerpt == null ? "" : excerpt));
+    }
+
+    private static String firstText(JsonNode node, String firstField, String secondField) {
+        String first = textOrNull(node, firstField);
+        return first == null ? textOrNull(node, secondField) : first;
     }
 
     private static Map<String, Object> readArguments(JsonNode node) {
-        if (node == null || node.isNull()) {
+        if (node == null || node.isNull() || !node.isObject()) {
             return Map.of();
         }
-        if (!node.isObject()) {
-            return Map.of();
-        }
-        Map<String, Object> map = new LinkedHashMap<>();
-        node.fields().forEachRemaining(entry -> map.put(entry.getKey(), jsonValue(entry.getValue())));
-        return map;
+        return jsonObject(node);
     }
 
     private static Object jsonValue(JsonNode node) {
@@ -89,15 +98,33 @@ public class HarnessActionParser {
             return null;
         }
         if (node.isTextual()) {
-            return node.asText();
+            return node.textValue();
         }
         if (node.isNumber()) {
             return node.numberValue();
         }
         if (node.isBoolean()) {
-            return node.asBoolean();
+            return node.booleanValue();
         }
-        return node.toString();
+        if (node.isArray()) {
+            return jsonArray(node);
+        }
+        if (node.isObject()) {
+            return jsonObject(node);
+        }
+        throw new IllegalArgumentException("不支持的工具参数节点类型");
+    }
+
+    private static Map<String, Object> jsonObject(JsonNode node) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        node.fields().forEachRemaining(entry -> values.put(entry.getKey(), jsonValue(entry.getValue())));
+        return Collections.unmodifiableMap(values);
+    }
+
+    private static List<Object> jsonArray(JsonNode node) {
+        List<Object> values = new ArrayList<>();
+        node.forEach(item -> values.add(jsonValue(item)));
+        return Collections.unmodifiableList(values);
     }
 
     private static String textOrNull(JsonNode node, String field) {

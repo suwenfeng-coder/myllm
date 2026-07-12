@@ -19,6 +19,7 @@ import com.example.myllm.harness.domain.RunStatus;
 import com.example.myllm.harness.domain.RunType;
 import com.example.myllm.harness.entity.HarnessRun;
 import java.time.LocalDateTime;
+import java.time.Month;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -27,6 +28,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /** Harness HTTP 契约测试，不启动 Spring 容器和外部服务。 */
 class HarnessRunControllerTests {
+
+    private static final LocalDateTime FIXED_TIME = LocalDateTime.of(2026, Month.JULY, 5, 12, 0);
 
     private HarnessRunService runService;
     private MockMvc mockMvc;
@@ -83,8 +86,8 @@ class HarnessRunControllerTests {
         run.setRunType(RunType.AGENT_LOOP);
         run.setStatus(RunStatus.QUEUED);
         run.setMaxSteps(6);
-        run.setCreatedAt(LocalDateTime.now());
-        run.setUpdatedAt(LocalDateTime.now());
+        run.setCreatedAt(FIXED_TIME);
+        run.setUpdatedAt(FIXED_TIME);
         return run;
     }
 }

@@ -1,7 +1,6 @@
 package com.example.myllm.config;
 
 import com.example.myllm.harness.domain.HarnessDomainException;
-import com.example.myllm.harness.domain.HarnessErrorCode;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

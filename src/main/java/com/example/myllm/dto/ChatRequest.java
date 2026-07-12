@@ -11,18 +11,20 @@ public record ChatRequest(
         List<String> fileIds,
         String chatMode
 ) {
+    private static final String DIRECT = "DIRECT";
+
     public boolean useRagEnabled() {
         if (chatMode != null && !chatMode.isBlank()) {
-            return !"DIRECT".equalsIgnoreCase(chatMode.trim());
+            return !DIRECT.equalsIgnoreCase(chatMode.trim());
         }
         return useRag == null || useRag;
     }
 
     public String resolvedChatMode() {
         if (chatMode != null && !chatMode.isBlank()) {
-            return "DIRECT".equalsIgnoreCase(chatMode.trim()) ? "DIRECT" : "RAG";
+            return DIRECT.equalsIgnoreCase(chatMode.trim()) ? DIRECT : "RAG";
         }
-        return useRagEnabled() ? "RAG" : "DIRECT";
+        return useRagEnabled() ? "RAG" : DIRECT;
     }
 
     public List<String> selectedFileIds() {

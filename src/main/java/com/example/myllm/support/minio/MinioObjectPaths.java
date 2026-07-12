@@ -2,10 +2,13 @@ package com.example.myllm.support.minio;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.regex.Pattern;
 
 public final class MinioObjectPaths {
 
     private static final DateTimeFormatter DATE_FOLDER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final Pattern FILE_ID_PATTERN = Pattern.compile("[A-Za-z0-9._-]+");
+    private static final String UNIQUE_SEPARATOR = "__";
 
     private MinioObjectPaths() {
     }
@@ -14,31 +17,35 @@ public final class MinioObjectPaths {
         return DATE_FOLDER.format(date);
     }
 
+    public static String requireValidFileId(String fileId) {
+        if (fileId == null || fileId.isBlank()) {
+            throw new IllegalArgumentException("fileId 不能为空");
+        }
+        String normalized = fileId.trim();
+        if (!FILE_ID_PATTERN.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("fileId 包含非法字符");
+        }
+        return normalized;
+    }
+
+    public static String originalFileName(String fileId, String originalFileName) {
+        FileNameParts parts = splitFileName(originalFileName);
+        return parts.stem() + UNIQUE_SEPARATOR + requireValidFileId(fileId) + parts.extension();
+    }
+
+    public static String parsedFileName(String fileId, String originalFileName) {
+        FileNameParts parts = splitFileName(originalFileName);
+        return parts.stem() + UNIQUE_SEPARATOR + requireValidFileId(fileId) + ".parsed.md";
+    }
+
     public static String originalObjectKey(
-            String uploadsPrefix, LocalDate date, String originalFileName) {
-        return normalizePrefix(uploadsPrefix) + "/"
-                + dateFolder(date) + "/"
-                + sanitizeFileName(originalFileName);
+            String uploadsPrefix, LocalDate date, String fileId, String originalFileName) {
+        return objectKey(uploadsPrefix, date, originalFileName(fileId, originalFileName));
     }
 
     public static String parsedObjectKey(
-            String parsedPrefix, LocalDate date, String parsedFileName) {
-        return normalizePrefix(parsedPrefix) + "/"
-                + dateFolder(date) + "/"
-                + sanitizeFileName(parsedFileName);
-    }
-
-    public static String parsedFileName(String originalFileName) {
-        String baseName = baseNameOf(originalFileName);
-        if (baseName.isBlank()) {
-            return "parsed.md";
-        }
-        int dot = baseName.lastIndexOf('.');
-        String stem = dot > 0 ? baseName.substring(0, dot) : baseName;
-        if (stem.isBlank()) {
-            return "parsed.md";
-        }
-        return stem + ".parsed.md";
+            String parsedPrefix, LocalDate date, String fileId, String originalFileName) {
+        return objectKey(parsedPrefix, date, parsedFileName(fileId, originalFileName));
     }
 
     public static String baseNameOf(String fileName) {
@@ -56,6 +63,19 @@ public final class MinioObjectPaths {
         return sanitized.isBlank() ? "unknown" : sanitized;
     }
 
+    private static String objectKey(String prefix, LocalDate date, String storedFileName) {
+        return normalizePrefix(prefix) + "/" + dateFolder(date) + "/" + storedFileName;
+    }
+
+    private static FileNameParts splitFileName(String fileName) {
+        String sanitized = sanitizeFileName(fileName);
+        int dot = sanitized.lastIndexOf('.');
+        if (dot <= 0) {
+            return new FileNameParts(sanitized, "");
+        }
+        return new FileNameParts(sanitized.substring(0, dot), sanitized.substring(dot));
+    }
+
     private static String normalizePrefix(String prefix) {
         if (prefix == null || prefix.isBlank()) {
             return "files";
@@ -68,5 +88,8 @@ public final class MinioObjectPaths {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized.isBlank() ? "files" : normalized;
+    }
+
+    private record FileNameParts(String stem, String extension) {
     }
 }

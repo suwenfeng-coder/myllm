@@ -5,7 +5,6 @@ import com.example.myllm.harness.port.ModelGateway;
 import com.example.myllm.harness.port.ToolDescriptor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

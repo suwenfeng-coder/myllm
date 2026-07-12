@@ -1,5 +1,7 @@
 package com.example.myllm.harness.domain;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -18,7 +20,9 @@ public sealed interface HarnessAction permits HarnessAction.CallTool, HarnessAct
     record CallTool(String tool, Map<String, Object> arguments, String summary) implements HarnessAction {
 
         public CallTool {
-            arguments = arguments == null ? Map.of() : Map.copyOf(arguments);
+            arguments = arguments == null
+                    ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(arguments));
             summary = summary == null ? "" : summary;
         }
 

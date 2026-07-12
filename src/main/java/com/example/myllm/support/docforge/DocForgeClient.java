@@ -27,6 +27,15 @@ import org.springframework.web.client.RestClientResponseException;
 import com.example.myllm.support.document.ParseProgressListener;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * DocForge 远程解析服务客户端。
+ *
+ * <p>负责与 Python 侧 DocForge 的能力接口、同步解析接口和异步任务接口通信。Java 业务层只关心
+ * {@code docling/maker} 等解析模式，本类负责把模式映射为远程 engine，并把 HTTP/传输错误翻译成用户可读的
+ * {@link DocForgeServiceException}。</p>
+ *
+ * <p>能力结果会短暂缓存，避免上传页频繁刷新时反复探测 Python 服务。解析正文仍以服务端实际返回为准。</p>
+ */
 @Component
 @ConditionalOnProperty(prefix = "docforge", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class DocForgeClient {
@@ -88,6 +97,12 @@ public class DocForgeClient {
         }
     }
 
+    /**
+     * 查询 DocForge 当前可用引擎。
+     *
+     * <p>新版 DocForge 会返回每个引擎的 enabled/installed/ready 状态；旧版或异常时返回空列表，由上层按
+     * 单引擎 Docling 兼容逻辑处理。</p>
+     */
     public DocForgeEnginesResponse listEngines() {
         DocForgeEnginesResponse cached = cachedEngines.get();
         if (cached != null && !cacheExpired(enginesCachedAt)) {
@@ -166,6 +181,12 @@ public class DocForgeClient {
         return parse(file, engine, null);
     }
 
+    /**
+     * 解析上传文件。
+     *
+     * <p>小文件优先同步解析；Maker、PDF Docling 或超过同步大小阈值的文件会转为异步任务并轮询进度。
+     * listener 用于把 Python 侧 job 进度桥接到 Java 上传任务状态。</p>
+     */
     public DocForgeParseResponse parse(MultipartFile file, String engine, ParseProgressListener listener) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("上传文件不能为空");
@@ -191,8 +212,10 @@ public class DocForgeClient {
             return parseSync(file, docForgeEngine);
         } catch (DocForgeServiceException e) {
             if (e.statusCode() >= 500) {
-                log.warn("DocForge 同步解析失败(status={})，改走异步: engine={}, file={}",
-                        e.statusCode(), docForgeEngine, fileName);
+                log.warn(
+                        "DocForge 同步解析失败(status={})，改走异步: engine={}",
+                        e.statusCode(),
+                        docForgeEngine);
                 return parseAsync(file, docForgeEngine, listener);
             }
             throw e;
@@ -213,7 +236,7 @@ public class DocForgeClient {
 
     private DocForgeParseResponse parseSync(MultipartFile file, String engine) {
         String fileName = originalFileName(file);
-        log.info("DocForge 同步解析: engine={}, file={}, size={}", engine, fileName, file.getSize());
+        log.info("DocForge 同步解析: engine={}", engine);
         try {
             return restClient.post()
                     .uri("/v1/parse/sync")
@@ -230,10 +253,16 @@ public class DocForgeClient {
         }
     }
 
+    /**
+     * 创建 DocForge 异步任务并轮询直到终态。
+     *
+     * <p>这里把 {@code succeeded/failed/cancelled} 三类终态显式处理；超出全局等待时间后抛出超时异常，
+     * 让上传任务进入 FAILED，而不是让前端无限等待。</p>
+     */
     @SuppressWarnings("java:S3776") // Polling state machine keeps all terminal states explicit.
     private DocForgeParseResponse parseAsync(MultipartFile file, String engine, ParseProgressListener listener) {
         String fileName = originalFileName(file);
-        log.info("DocForge 异步解析: engine={}, file={}, size={}", engine, fileName, file.getSize());
+        log.info("DocForge 异步解析: engine={}", engine);
         DocForgeJobCreateResponse created;
         try {
             created = restClient.post()
@@ -413,14 +442,15 @@ public class DocForgeClient {
         return fileName == null || fileName.isBlank() ? UNKNOWN : fileName;
     }
 
-    private static String sanitizeFilename(String fileName) {
+    static String sanitizeFilename(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return UNKNOWN;
         }
         String normalized = fileName.replace('\\', '/');
         int slash = normalized.lastIndexOf('/');
         String leaf = slash >= 0 ? normalized.substring(slash + 1) : normalized;
-        return leaf.isBlank() ? UNKNOWN : leaf;
+        String sanitized = leaf.replaceAll("[\\r\\n]", "_");
+        return sanitized.isBlank() ? UNKNOWN : sanitized;
     }
 
     private DocForgeFormatsResponse fallbackFormats(String engine) {

@@ -49,7 +49,15 @@ public class ContextAssembler {
         return new HarnessObservation(toolName, content, sourceIds, !sourceIds.isEmpty());
     }
 
-    /** 构造最终用户 Prompt，并返回本轮可接受引用 ID 集合。 */
+    /**
+     * 构造最终用户 Prompt，并返回本轮可接受引用 ID 集合。
+     *
+     * <p>上下文组装遵循固定优先级：运行目标、当前步骤、工具目录、修复反馈、工具观察。工具观察会先按
+     * “包含可引用证据”优先，再按时间保留最近内容；超过预算的观察会被截断并记录 truncated。</p>
+     *
+     * <p>引用白名单只来自本轮真实 Tool/RAG 输出中的 citation，不从模型文本中反推。最终答案必须引用这些
+     * sourceId，才能通过 {@link FinalAnswerValidator}。</p>
+     */
     public AssembledContext assemble(
             HarnessRun run,
             List<ToolDescriptor> tools,
